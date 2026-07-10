@@ -1,0 +1,20 @@
+# Preset: x86-64 only.
+# The lightest setup -- a single target, runs natively without QEMU.
+# Use it with:  cte -c configs/x86_64.toml install
+
+[general]
+architectures = ["x86_64"]
+
+[llvm]
+enabled = true
+ref = "main"
+projects = ["clang", "lld"]
+runtimes = ["compiler-rt"]   # sanitizers on by default
+
+[gcc]
+enabled = true
+ref = "master"
+
+[qemu]
+# Native binaries run directly; QEMU isn't needed for a single host target.
+enabled = false

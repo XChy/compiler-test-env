@@ -1,0 +1,34 @@
+# Preset: every architecture in the registry.
+# The heaviest setup -- one GCC cross compiler per target plus a wide QEMU
+# build. Expect a long build and a lot of disk.
+# Use it with:  cte -c configs/all.toml install
+
+[general]
+architectures = [
+    "x86_64",
+    "aarch64",
+    "arm",
+    "riscv64",
+    "riscv32",
+    "mips64",
+    "mips",
+    "powerpc64",
+    "powerpc64le",
+    "s390x",
+    "loongarch64",
+]
+
+[llvm]
+enabled = true
+ref = "main"
+projects = ["clang", "lld"]
+runtimes = ["compiler-rt"]   # sanitizers on by default
+
+[gcc]
+enabled = true
+ref = "master"
+
+[qemu]
+enabled = true
+version = "latest"
+modes = ["user"]

@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "compiler-test-env"
+version = "0.1.0"
+description = "Set up testing environments for the latest C compilers across multiple architectures"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+dependencies = [
+    # tomllib is stdlib on 3.11+; backport for older interpreters.
+    "tomli>=2.0; python_version < '3.11'",
+]
+
+[project.scripts]
+cte = "cte.cli:main"
+
+[tool.setuptools]
+packages = ["cte", "cte.builders"]

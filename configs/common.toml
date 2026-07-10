@@ -1,0 +1,31 @@
+# Preset: common architectures (x86-64, riscv64, aarch64).
+# A practical multi-arch set for day-to-day cross testing.
+# Use it with:  cte -c configs/common.toml install
+
+[general]
+architectures = ["x86_64", "riscv64", "aarch64"]
+
+[llvm]
+enabled = true
+ref = "main"
+projects = ["clang", "lld"]
+runtimes = ["compiler-rt"]   # sanitizers on by default
+
+[gcc]
+enabled = true
+ref = "master"
+
+# Cross compilers without both entries only support -c/-S.  Supply matching
+# glibc sysroots and target binutils to link executable files.
+[gcc.sysroots]
+# riscv64 = "/opt/sysroots/riscv64-linux-gnu"
+# aarch64 = "/opt/sysroots/aarch64-linux-gnu"
+
+[gcc.binutils]
+# riscv64 = "/opt/cross/riscv64-linux-gnu/bin"
+# aarch64 = "/opt/cross/aarch64-linux-gnu/bin"
+
+[qemu]
+enabled = true
+version = "latest"
+modes = ["user"]

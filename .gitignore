@@ -216,3 +216,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# compiler-test-env: local config and generated trees
+/config.toml
+/src/
+/build/
+/toolchains/

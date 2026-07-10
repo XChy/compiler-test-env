@@ -1,0 +1,66 @@
+# compiler-test-env configuration.
+# Copy this file to config.toml and edit it:  cp config.example.toml config.toml
+
+[general]
+# Where built toolchains are installed. This directory is NEVER added to PATH;
+# use `cte env` / activate.sh to put tools on PATH on demand.
+prefix = "toolchains"
+# Where sources are cloned / extracted, and where they are built.
+src_dir = "src"
+build_dir = "build"
+# Parallelism. 0 = autodetect (number of CPUs).
+jobs = 0
+# Architectures to target. See `cte list-arch` for the full list.
+architectures = ["x86_64", "aarch64", "riscv64"]
+
+[sysroot]
+# CTE builds binutils, Linux headers, a bootstrap GCC and musl for every
+# non-native architecture.  This changes cross triples to *-linux-musl.
+enabled = true
+libc = "musl"
+
+[llvm]
+enabled = true
+# Trunk. Use "main" for the very latest; a release branch also works.
+ref = "main"
+# SSH by default (needs a GitHub SSH key); HTTPS also works:
+# https://github.com/llvm/llvm-project.git
+repo = "git@github.com:llvm/llvm-project.git"
+projects = ["clang", "lld"]
+runtimes = ["compiler-rt"]   # sanitizer runtimes (asan/ubsan/tsan/...)
+shallow = true           # shallow clone (faster; less history)
+extra_cmake_args = []    # e.g. ["-DLLVM_USE_LINKER=lld"]
+
+[gcc]
+# A GCC cross compiler is built per architecture, which is slower than the
+# single LLVM build. Set to false to skip GCC entirely.
+enabled = true
+ref = "master"           # trunk
+# GitHub mirror (faster/more reliable than gcc.gnu.org). HTTPS also works:
+# https://github.com/gcc-mirror/gcc.git
+repo = "git@github.com:gcc-mirror/gcc.git"
+languages = ["c", "c++"]
+# Build libsanitizer (asan/ubsan/...). Effective for the native target, or for
+# cross targets when a sysroot is given below (--with-sysroot=...).
+sanitizers = true
+shallow = true
+extra_configure_args = []
+# Only used when [sysroot].enabled = false, to use an externally managed SDK.
+[gcc.sysroots]
+# aarch64 = "/opt/sysroots/aarch64-linux-gnu"
+# riscv64 = "/opt/sysroots/riscv64-linux-gnu"
+
+# Only used when [sysroot].enabled = false.
+[gcc.binutils]
+# aarch64 = "/opt/cross/aarch64-linux-gnu/bin"
+# riscv64 = "/opt/cross/riscv64-linux-gnu/bin"
+
+[qemu]
+enabled = true
+# "latest" resolves to the newest stable release on download.qemu.org,
+# or pin a version like "9.1.0".
+version = "latest"
+# "user" = qemu-<arch> (linux-user, ideal for running cross-compiled binaries);
+# "system" = qemu-system-<arch> (full machine emulation).
+modes = ["user"]
+extra_configure_args = []
