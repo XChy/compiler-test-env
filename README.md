@@ -77,8 +77,9 @@ cte -c config.toml install sysroot gcc llvm qemu
 cte -c config.toml verify
 ```
 
-`verify` links a minimal executable with every installed GCC/Clang target.
-It intentionally skips a cross target without a configured sysroot rather
+`verify` statically links a minimal executable with every installed GCC/Clang
+target and runs cross binaries with QEMU when the corresponding QEMU binary is
+installed. It intentionally skips a cross target without a configured sysroot rather
 than claiming compile-only support is executable support.  To run dynamically
 linked results with QEMU, use the same sysroot as its loader prefix, e.g.
 `$QEMU_AARCH64 -L /opt/sysroots/aarch64-linux-gnu ./hello`.
@@ -131,7 +132,7 @@ PATH step — nothing is global):
 ```bash
 source toolchains/activate.sh
 
-"$CLANG" --target=aarch64-linux-musl --sysroot="$SYSROOT_AARCH64" -O2 hello.c -o hello
+"$CLANG" --target=aarch64-linux-musl --sysroot="$SYSROOT_AARCH64" --gcc-toolchain="$GCC_TOOLCHAIN_AARCH64" -fuse-ld=lld -O2 hello.c -o hello
 "$QEMU_AARCH64" -L "$SYSROOT_AARCH64" ./hello
 ```
 
@@ -153,7 +154,7 @@ Or skip `PATH` entirely and call tools by their exported variables:
 | `cte env [--write]` | Print the activation script (or write `toolchains/activate.sh`). |
 | `cte clean  [sysroot\|llvm\|gcc\|qemu\|all]` | Remove build and install trees. |
 | `cte list-arch` | List supported architectures and their target identifiers. |
-| `cte verify` | Link a minimal executable for every configured target with an installed compiler. |
+| `cte verify` | Link and, when QEMU is available, run every configured target. |
 
 With no component argument, commands act on whatever is `enabled` in the config.
 Pass `-c/--config` to use a config file other than `./config.toml`.

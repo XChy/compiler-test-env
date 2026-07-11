@@ -90,14 +90,20 @@ def cmd_verify(cfg: Config, args) -> None:
             gcc = cfg.prefix / "gcc" / triple / "bin" / f"{triple}-gcc"
             if gcc.is_file():
                 if target.name == "x86_64" or cfg.sysroot.enabled or cfg.binutils_for(target):
-                    commands.append(("gcc", [str(gcc)]))
+                    commands.append(("gcc", [str(gcc), "-static"]))
                 else:
                     print(f"SKIP {target.name} (gcc): no [gcc.binutils].{target.name} configured")
             clang = cfg.prefix / "llvm" / "bin" / "clang"
             if clang.is_file():
-                command = [str(clang), f"--target={triple}", "-fuse-ld=lld"]
+                command = [str(clang), f"--target={triple}", "-fuse-ld=lld", "-static"]
                 if sysroot:
                     command.append(f"--sysroot={sysroot}")
+                gcc_root = cfg.prefix / "gcc" / triple
+                bootstrap_root = cfg.prefix / "sysroot" / "bootstrap" / triple
+                if gcc_root.is_dir():
+                    command.append(f"--gcc-toolchain={gcc_root}")
+                elif bootstrap_root.is_dir():
+                    command.append(f"--gcc-toolchain={bootstrap_root}")
                 commands.append(("clang", command))
             if not commands:
                 print(f"SKIP {target.name}: no installed compiler")
@@ -108,7 +114,16 @@ def cmd_verify(cfg: Config, args) -> None:
                     [*command, "-x", "c", "-", "-o", str(output)],
                     input=source, text=True, check=True,
                 )
-                print(f"OK   {target.name} ({name}): linked {output.name}")
+                runner = cfg.prefix / "qemu" / "bin" / f"qemu-{target.qemu_user}"
+                if target.name == cfg.host_architecture:
+                    subprocess.run([str(output)], check=True)
+                    result = "linked and ran natively"
+                elif runner.is_file():
+                    subprocess.run([str(runner), str(output)], check=True)
+                    result = "linked and ran with QEMU"
+                else:
+                    result = "linked (QEMU not installed; not run)"
+                print(f"OK   {target.name} ({name}): {result}")
                 checked += 1
     if not checked:
         raise RuntimeError("no target was verified; configure sysroots and install a compiler")
@@ -150,7 +165,7 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("list-arch", help="list known architectures")
     s.set_defaults(func=cmd_list_arch)
 
-    s = sub.add_parser("verify", help="link a minimal executable for each configured target")
+    s = sub.add_parser("verify", help="link and, when available, run each configured target")
     s.set_defaults(func=cmd_verify)
 
     return p

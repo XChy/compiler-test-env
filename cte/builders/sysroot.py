@@ -80,7 +80,7 @@ class SysrootBuilder(Builder):
             f"INSTALL_HDR_PATH={sysroot / 'usr'}",
         ], cwd=self._source("linux"))
 
-    def _build_musl(self, target: Arch, bootstrap: Path, sysroot: Path) -> None:
+    def _configure_musl(self, target: Arch, bootstrap: Path, sysroot: Path) -> Path:
         triple = self.cfg.target_triple(target)
         build = self.build / "musl" / triple
         build.mkdir(parents=True, exist_ok=True)
@@ -89,7 +89,27 @@ class SysrootBuilder(Builder):
             str(self._source("musl") / "configure"), f"--target={triple}",
             "--prefix=/usr", "--syslibdir=/lib",
         ], cwd=build, env={"CROSS_COMPILE": str(cross)})
-        log.run(["make", f"-j{self.cfg.jobs}"], cwd=build, env={"CROSS_COMPILE": str(cross)})
+        # This is the bridge between the headerless bootstrap compiler and
+        # libgcc: GCC's libgcc sources include standard C headers.
+        log.run(["make", f"DESTDIR={sysroot}", "install-headers"], cwd=build,
+                env={"CROSS_COMPILE": str(cross)})
+        return build
+
+    def _build_musl(self, bootstrap: Path, sysroot: Path, build: Path) -> None:
+        triple = build.name
+        cross = bootstrap / "bin" / f"{triple}-"
+        compiler = bootstrap / "bin" / f"{triple}-gcc"
+        libgcc = Path(log.capture([str(compiler), "-print-libgcc-file-name"]))
+        if not libgcc.is_file():
+            raise FileNotFoundError(
+                f"bootstrap libgcc is missing: {libgcc}; "
+                "the target libgcc stage did not complete"
+            )
+        # musl defaults to LIBCC=-lgcc.  Pass the resolved archive explicitly:
+        # the bootstrap compiler's library search path differs from the final
+        # sysroot and is easily lost in recursive make invocations.
+        log.run(["make", f"-j{self.cfg.jobs}", f"LIBCC={libgcc}"], cwd=build,
+                env={"CROSS_COMPILE": str(cross)})
         log.run(["make", f"DESTDIR={sysroot}", "install"], cwd=build,
                 env={"CROSS_COMPILE": str(cross)})
 
@@ -112,7 +132,9 @@ class SysrootBuilder(Builder):
             sysroot = self.install_dir / triple
             self._install_linux_headers(target, sysroot)
             bootstrap = gcc.build_bootstrap(target, tools, sysroot)
-            self._build_musl(target, bootstrap, sysroot)
+            musl_build = self._configure_musl(target, bootstrap, sysroot)
+            gcc.build_bootstrap_libgcc(target)
+            self._build_musl(bootstrap, sysroot, musl_build)
         log.info(f"managed sysroots installed at {self.install_dir}")
 
     def update(self) -> None:

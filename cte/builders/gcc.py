@@ -16,6 +16,7 @@ them when a target libc/headers are available:
 
 from __future__ import annotations
 
+import os
 import platform
 
 from .. import log
@@ -60,6 +61,11 @@ class GCCBuilder(Builder):
         binutils = self.cfg.binutils_for(a)
         if binutils is None and self.cfg.sysroot.enabled and not native:
             binutils = self.cfg.prefix / "sysroot" / "tools" / triple / "bin"
+        tool_env = None
+        if binutils:
+            # GCC invokes ar/ranlib/nm by target-prefixed name while building
+            # runtime libraries.  --with-as/--with-ld alone is insufficient.
+            tool_env = {"PATH": f"{binutils}{os.pathsep}{os.environ['PATH']}"}
         has_sysroot = sysroot is not None
         # A "full" build can produce target libraries (libgcc, libstdc++,
         # libsanitizer); a minimal build is just the compiler.
@@ -97,9 +103,9 @@ class GCCBuilder(Builder):
                 else "--disable-libsanitizer"
             )
             configure += c.extra_configure_args
-            log.run(configure, cwd=bdir)
-            log.run(["make", f"-j{self.cfg.jobs}"], cwd=bdir)
-            log.run(["make", "install"], cwd=bdir)
+            log.run(configure, cwd=bdir, env=tool_env)
+            log.run(["make", f"-j{self.cfg.jobs}"], cwd=bdir, env=tool_env)
+            log.run(["make", "install"], cwd=bdir, env=tool_env)
         else:
             if c.sanitizers:
                 log.warn(
@@ -117,10 +123,10 @@ class GCCBuilder(Builder):
                 "--disable-libsanitizer",
             ]
             configure += c.extra_configure_args
-            log.run(configure, cwd=bdir)
+            log.run(configure, cwd=bdir, env=tool_env)
             # all-gcc / install-gcc gives a working compiler without a full libc.
-            log.run(["make", f"-j{self.cfg.jobs}", "all-gcc"], cwd=bdir)
-            log.run(["make", "install-gcc"], cwd=bdir)
+            log.run(["make", f"-j{self.cfg.jobs}", "all-gcc"], cwd=bdir, env=tool_env)
+            log.run(["make", "install-gcc"], cwd=bdir, env=tool_env)
 
     def build_bootstrap(self, a: Arch, binutils: Path, sysroot: Path) -> Path:
         """Build the headerless GCC needed to compile musl for ``a``."""
@@ -133,6 +139,16 @@ class GCCBuilder(Builder):
         linker = binutils / f"{triple}-ld"
         if not assembler.is_file() or not linker.is_file():
             raise FileNotFoundError(f"expected {assembler} and {linker}")
+        # GCC records its bootstrap prefix as a tool search location.  Mirror
+        # every target-prefixed binutils executable there as symlinks so both
+        # configure-time absolute paths and later Makefiles find ar/ranlib/nm.
+        bootstrap_bin = prefix / "bin"
+        bootstrap_bin.mkdir(parents=True, exist_ok=True)
+        for tool in binutils.glob(f"{triple}-*"):
+            link = bootstrap_bin / tool.name
+            if link.exists() or link.is_symlink():
+                link.unlink()
+            link.symlink_to(tool)
         configure = [
             str(self.src / "configure"), f"--target={triple}", f"--prefix={prefix}",
             "--enable-languages=c", "--without-headers", "--disable-multilib",
@@ -141,10 +157,23 @@ class GCCBuilder(Builder):
             "--disable-libsanitizer", f"--with-as={assembler}", f"--with-ld={linker}",
             f"--with-sysroot={sysroot}",
         ]
-        log.run(configure, cwd=bdir)
-        log.run(["make", f"-j{self.cfg.jobs}", "all-gcc"], cwd=bdir)
-        log.run(["make", "install-gcc"], cwd=bdir)
+        tool_env = {"PATH": f"{binutils}{os.pathsep}{os.environ['PATH']}"}
+        log.run(configure, cwd=bdir, env=tool_env)
+        log.run(["make", f"-j{self.cfg.jobs}", "all-gcc"], cwd=bdir, env=tool_env)
+        log.run(["make", "install-gcc"], cwd=bdir, env=tool_env)
         return prefix
+
+    def build_bootstrap_libgcc(self, a: Arch) -> None:
+        """Install libgcc after musl's headers have populated the sysroot."""
+        triple = self.cfg.target_triple(a)
+        bdir = self.build / f"{triple}-bootstrap"
+        binutils = self.cfg.prefix / "sysroot" / "tools" / triple / "bin"
+        tool_env = {"PATH": f"{binutils}{os.pathsep}{os.environ['PATH']}"}
+        # musl itself can require compiler helper routines (for example the
+        # RISC-V long-double __addtf3 family).  A headerless GCC stage still
+        # needs musl's public headers before it can build libgcc.
+        log.run(["make", f"-j{self.cfg.jobs}", "all-target-libgcc"], cwd=bdir, env=tool_env)
+        log.run(["make", "install-target-libgcc"], cwd=bdir, env=tool_env)
 
     def _build_all(self) -> None:
         for a in self.cfg.arches:

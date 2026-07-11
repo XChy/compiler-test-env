@@ -203,4 +203,8 @@ def load(path: Path) -> Config:
         )
     with path.open("rb") as fh:
         data = tomllib.load(fh)
-    return from_data(data, path.resolve().parent)
+    # Presets live under ``configs/`` but their relative directories must still
+    # be shared project directories (``./toolchains``, ``./src``, ``./build``),
+    # not siblings of the preset.  This also matches ``project_root``'s stated
+    # invariant and makes `cte -c configs/common.toml install` unsurprising.
+    return from_data(data, project_root(path.resolve().parent))
