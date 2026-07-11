@@ -59,12 +59,17 @@ class SysrootBuilder(Builder):
         build = self.build / "binutils" / triple
         prefix = self.install_dir / "tools" / triple
         build.mkdir(parents=True, exist_ok=True)
-        log.run([
+        self._run_logged([
             str(source / "configure"), f"--target={triple}", f"--prefix={prefix}",
+            # Only gas/ld and the binutils programs are needed for a cross
+            # compiler.  The binutils-gdb source tree otherwise also builds
+            # GDB, gdbserver, simulators and profiling tools per target.
             "--disable-nls", "--disable-werror", "--disable-multilib",
-        ], cwd=build)
-        log.run(["make", f"-j{self.cfg.jobs}"], cwd=build)
-        log.run(["make", "install"], cwd=build)
+            "--disable-gdb", "--disable-gdbserver", "--disable-sim",
+            "--disable-gprofng", "--disable-gold", "--disable-libdecnumber",
+        ], "configure", cwd=build)
+        self._run_logged(["make", f"-j{self.cfg.jobs}"], "build", cwd=build)
+        self._run_logged(["make", "install"], "install", cwd=build)
         return prefix / "bin"
 
     def _install_linux_headers(self, target: Arch, sysroot: Path) -> None:
@@ -75,24 +80,24 @@ class SysrootBuilder(Builder):
                 f"managed musl sysroots currently support: {', '.join(_LINUX_ARCH)}; "
                 f"use [sysroot] enabled = false with an external sysroot for {target.name}"
             ) from exc
-        log.run([
+        log.run_to_log([
             "make", f"ARCH={linux_arch}", "headers_install",
             f"INSTALL_HDR_PATH={sysroot / 'usr'}",
-        ], cwd=self._source("linux"))
+        ], self.build / f"headers-{target.name}.log", cwd=self._source("linux"))
 
     def _configure_musl(self, target: Arch, bootstrap: Path, sysroot: Path) -> Path:
         triple = self.cfg.target_triple(target)
         build = self.build / "musl" / triple
         build.mkdir(parents=True, exist_ok=True)
         cross = bootstrap / "bin" / f"{triple}-"
-        log.run([
+        self._run_logged([
             str(self._source("musl") / "configure"), f"--target={triple}",
             "--prefix=/usr", "--syslibdir=/lib",
-        ], cwd=build, env={"CROSS_COMPILE": str(cross)})
+        ], "configure", cwd=build, env={"CROSS_COMPILE": str(cross)})
         # This is the bridge between the headerless bootstrap compiler and
         # libgcc: GCC's libgcc sources include standard C headers.
-        log.run(["make", f"DESTDIR={sysroot}", "install-headers"], cwd=build,
-                env={"CROSS_COMPILE": str(cross)})
+        self._run_logged(["make", f"DESTDIR={sysroot}", "install-headers"], "headers", cwd=build,
+                         env={"CROSS_COMPILE": str(cross)})
         return build
 
     def _build_musl(self, bootstrap: Path, sysroot: Path, build: Path) -> None:
@@ -108,10 +113,10 @@ class SysrootBuilder(Builder):
         # musl defaults to LIBCC=-lgcc.  Pass the resolved archive explicitly:
         # the bootstrap compiler's library search path differs from the final
         # sysroot and is easily lost in recursive make invocations.
-        log.run(["make", f"-j{self.cfg.jobs}", f"LIBCC={libgcc}"], cwd=build,
-                env={"CROSS_COMPILE": str(cross)})
-        log.run(["make", f"DESTDIR={sysroot}", "install"], cwd=build,
-                env={"CROSS_COMPILE": str(cross)})
+        self._run_logged(["make", f"-j{self.cfg.jobs}", f"LIBCC={libgcc}"], "build", cwd=build,
+                         env={"CROSS_COMPILE": str(cross)})
+        self._run_logged(["make", f"DESTDIR={sysroot}", "install"], "install", cwd=build,
+                         env={"CROSS_COMPILE": str(cross)})
 
     def install(self) -> None:
         if self.cfg.sysroot.libc != "musl":

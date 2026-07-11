@@ -82,9 +82,12 @@ class QEMUBuilder(Builder):
             f"--target-list={self._target_list()}",
         ]
         configure += self.cfg.qemu.extra_configure_args
-        log.run(configure, cwd=self.build)
-        log.run(["make", f"-j{self.cfg.jobs}"], cwd=self.build)
-        log.run(["make", "install"], cwd=self.build)
+        log.info("configuring QEMU (details: configure.log)")
+        self._run_logged(configure, "configure")
+        log.info("building QEMU targets (detailed compiler output is in build.log)")
+        self._run_logged(["make", f"-j{self.cfg.jobs}"], "build")
+        log.info("installing QEMU")
+        self._run_logged(["make", "install"], "install")
 
     def install(self) -> None:
         version = self._resolve_version()

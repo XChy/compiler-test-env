@@ -53,6 +53,13 @@ class Builder:
                 log.step(f"removing {p}")
                 shutil.rmtree(p)
 
+    def _run_logged(
+        self, cmd: list[str], phase: str, cwd: Path | None = None, env: dict | None = None
+    ) -> None:
+        """Run a noisy build stage with its full output kept beside the build."""
+        directory = cwd or self.build
+        log.run_to_log(cmd, directory / f"{phase}.log", cwd=directory, env=env)
+
     # --- shared git helpers ---------------------------------------------
     # Git options that make large clones over flaky links survive better:
     # a big send buffer, and a low-speed timeout so a stalled transfer fails

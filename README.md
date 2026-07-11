@@ -219,6 +219,10 @@ cte/
 
 Sources are cloned into `src/`, built in `build/`, and installed into
 `toolchains/<component>/`. The first three are git-ignored.
+Detailed configure/build/install output is written beside each component's
+build directory (for example `build/llvm/build.log` and
+`build/gcc/<target>/build.log`). Terminal output reports only high-level build
+stages and prints the final log lines if a stage fails.
 
 ## Notes & caveats
 
@@ -230,6 +234,8 @@ Sources are cloned into `src/`, built in `build/`, and installed into
   full libc-linked build with sanitizers for that cross target too.  Existing
   compiler-only installations must be rebuilt after adding them.
 - **Disk and time.** Trunk LLVM and GCC are large; expect tens of GB and a long
-  first build. Subsequent `update`s reuse the source and build trees.
+  first build. Subsequent `update`s reuse the source and build trees; when
+  available, CTE enables `ccache` for LLVM rebuilds. The managed binutils stage
+  builds only the assembler/linker tools, not GDB or simulators.
 - **Reproducibility.** Trunk moves fast by design. `cte status` reports the
   exact `git describe` of each installed source.

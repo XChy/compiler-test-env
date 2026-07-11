@@ -39,6 +39,30 @@ def run(cmd: list[str], cwd: Path | None = None, env: dict | None = None) -> Non
     subprocess.run([str(c) for c in cmd], cwd=cwd, env=full_env, check=True)
 
 
+def run_to_log(
+    cmd: list[str], log_path: Path, cwd: Path | None = None, env: dict | None = None
+) -> None:
+    """Run a noisy command, retaining full output in ``log_path``.
+
+    Build systems such as Ninja print one line per object file. Keep that noise
+    out of the terminal while preserving it for diagnosis; surface the final
+    lines if the command fails.
+    """
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    step("$ " + " ".join(str(c) for c in cmd) + f"  (log: {log_path})")
+    full_env = {**os.environ, **env} if env else None
+    with log_path.open("w", encoding="utf-8") as output:
+        result = subprocess.run(
+            [str(c) for c in cmd], cwd=cwd, env=full_env,
+            stdout=output, stderr=subprocess.STDOUT,
+        )
+    if result.returncode:
+        tail = log_path.read_text(encoding="utf-8", errors="replace").splitlines()[-80:]
+        error(f"command failed; last output from {log_path}:")
+        print("\n".join(tail), file=sys.stderr)
+        raise subprocess.CalledProcessError(result.returncode, [str(c) for c in cmd])
+
+
 def run_retry(
     cmd: list[str],
     cwd: Path | None = None,

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import os
 import platform
+from pathlib import Path
 
 from .. import log
 from ..arch import Arch
@@ -42,11 +43,43 @@ def _host_arch_name() -> str | None:
 class GCCBuilder(Builder):
     name = "gcc"
 
+    def _binutils_for(self, target: Arch, triple: str, native: bool) -> Path | None:
+        """Locate target binutils, preferring an explicitly configured SDK."""
+        tools = self.cfg.binutils_for(target)
+        if tools is None and self.cfg.sysroot.enabled and not native:
+            return self.cfg.prefix / "sysroot" / "tools" / triple / "bin"
+        return tools
+
+    @staticmethod
+    def _tool_env(binutils: Path | None) -> dict | None:
+        if binutils is None:
+            return None
+        return {"PATH": f"{binutils}{os.pathsep}{os.environ['PATH']}"}
+
+    @staticmethod
+    def _require_linker_tools(binutils: Path, triple: str) -> tuple[Path, Path]:
+        assembler, linker = binutils / f"{triple}-as", binutils / f"{triple}-ld"
+        if not assembler.is_file() or not linker.is_file():
+            raise FileNotFoundError(f"expected {assembler} and {linker}")
+        return assembler, linker
+
+    def _make(self, bdir: Path, phase: str, target: str, env: dict | None) -> None:
+        self._run_logged(["make", f"-j{self.cfg.jobs}", target], phase, cwd=bdir, env=env)
+
     def _sync(self) -> None:
         c = self.cfg.gcc
+        marker = (c.repo, c.ref, c.shallow)
+        if getattr(self.cfg, "_gcc_sync_marker", None) == marker:
+            return
         self._git_sync(c.repo, c.ref, c.shallow)
         log.info("downloading GCC prerequisites (gmp/mpfr/mpc/isl)")
-        log.run(["./contrib/download_prerequisites"], cwd=self.src)
+        log.run_to_log(
+            ["./contrib/download_prerequisites"], self.build / "prerequisites.log", cwd=self.src
+        )
+        # sysroot needs GCC for its bootstrap stage, then the final GCC
+        # component follows immediately in a normal install. Avoid a second
+        # fetch and prerequisite pass in that one process.
+        self.cfg._gcc_sync_marker = marker
 
     def _build_one(self, a: Arch) -> None:
         log.require("make")
@@ -58,14 +91,8 @@ class GCCBuilder(Builder):
 
         native = a.name == _host_arch_name()
         sysroot = self.cfg.sysroot_for(a)
-        binutils = self.cfg.binutils_for(a)
-        if binutils is None and self.cfg.sysroot.enabled and not native:
-            binutils = self.cfg.prefix / "sysroot" / "tools" / triple / "bin"
-        tool_env = None
-        if binutils:
-            # GCC invokes ar/ranlib/nm by target-prefixed name while building
-            # runtime libraries.  --with-as/--with-ld alone is insufficient.
-            tool_env = {"PATH": f"{binutils}{os.pathsep}{os.environ['PATH']}"}
+        binutils = self._binutils_for(a, triple, native)
+        tool_env = self._tool_env(binutils)
         has_sysroot = sysroot is not None
         # A "full" build can produce target libraries (libgcc, libstdc++,
         # libsanitizer); a minimal build is just the compiler.
@@ -91,21 +118,19 @@ class GCCBuilder(Builder):
                         "to the directory containing "
                         f"{triple}-as and {triple}-ld"
                     )
-                assembler = binutils / f"{triple}-as"
-                linker = binutils / f"{triple}-ld"
-                if not assembler.is_file() or not linker.is_file():
-                    raise FileNotFoundError(
-                        f"{a.name}: expected {assembler} and {linker}"
-                    )
+                try:
+                    assembler, linker = self._require_linker_tools(binutils, triple)
+                except FileNotFoundError as exc:
+                    raise FileNotFoundError(f"{a.name}: {exc}") from exc
                 configure += [f"--with-as={assembler}", f"--with-ld={linker}"]
             configure.append(
                 "--enable-libsanitizer" if c.sanitizers
                 else "--disable-libsanitizer"
             )
             configure += c.extra_configure_args
-            log.run(configure, cwd=bdir, env=tool_env)
-            log.run(["make", f"-j{self.cfg.jobs}"], cwd=bdir, env=tool_env)
-            log.run(["make", "install"], cwd=bdir, env=tool_env)
+            self._run_logged(configure, "configure", cwd=bdir, env=tool_env)
+            self._make(bdir, "build", "all", tool_env)
+            self._run_logged(["make", "install"], "install", cwd=bdir, env=tool_env)
         else:
             if c.sanitizers:
                 log.warn(
@@ -123,10 +148,10 @@ class GCCBuilder(Builder):
                 "--disable-libsanitizer",
             ]
             configure += c.extra_configure_args
-            log.run(configure, cwd=bdir, env=tool_env)
+            self._run_logged(configure, "configure", cwd=bdir, env=tool_env)
             # all-gcc / install-gcc gives a working compiler without a full libc.
-            log.run(["make", f"-j{self.cfg.jobs}", "all-gcc"], cwd=bdir, env=tool_env)
-            log.run(["make", "install-gcc"], cwd=bdir, env=tool_env)
+            self._make(bdir, "build", "all-gcc", tool_env)
+            self._run_logged(["make", "install-gcc"], "install", cwd=bdir, env=tool_env)
 
     def build_bootstrap(self, a: Arch, binutils: Path, sysroot: Path) -> Path:
         """Build the headerless GCC needed to compile musl for ``a``."""
@@ -135,10 +160,7 @@ class GCCBuilder(Builder):
         bdir = self.build / f"{triple}-bootstrap"
         prefix = self.cfg.prefix / "sysroot" / "bootstrap" / triple
         bdir.mkdir(parents=True, exist_ok=True)
-        assembler = binutils / f"{triple}-as"
-        linker = binutils / f"{triple}-ld"
-        if not assembler.is_file() or not linker.is_file():
-            raise FileNotFoundError(f"expected {assembler} and {linker}")
+        assembler, linker = self._require_linker_tools(binutils, triple)
         # GCC records its bootstrap prefix as a tool search location.  Mirror
         # every target-prefixed binutils executable there as symlinks so both
         # configure-time absolute paths and later Makefiles find ar/ranlib/nm.
@@ -157,10 +179,10 @@ class GCCBuilder(Builder):
             "--disable-libsanitizer", f"--with-as={assembler}", f"--with-ld={linker}",
             f"--with-sysroot={sysroot}",
         ]
-        tool_env = {"PATH": f"{binutils}{os.pathsep}{os.environ['PATH']}"}
-        log.run(configure, cwd=bdir, env=tool_env)
-        log.run(["make", f"-j{self.cfg.jobs}", "all-gcc"], cwd=bdir, env=tool_env)
-        log.run(["make", "install-gcc"], cwd=bdir, env=tool_env)
+        tool_env = self._tool_env(binutils)
+        self._run_logged(configure, "configure", cwd=bdir, env=tool_env)
+        self._make(bdir, "build", "all-gcc", tool_env)
+        self._run_logged(["make", "install-gcc"], "install", cwd=bdir, env=tool_env)
         return prefix
 
     def build_bootstrap_libgcc(self, a: Arch) -> None:
@@ -168,12 +190,12 @@ class GCCBuilder(Builder):
         triple = self.cfg.target_triple(a)
         bdir = self.build / f"{triple}-bootstrap"
         binutils = self.cfg.prefix / "sysroot" / "tools" / triple / "bin"
-        tool_env = {"PATH": f"{binutils}{os.pathsep}{os.environ['PATH']}"}
+        tool_env = self._tool_env(binutils)
         # musl itself can require compiler helper routines (for example the
         # RISC-V long-double __addtf3 family).  A headerless GCC stage still
         # needs musl's public headers before it can build libgcc.
-        log.run(["make", f"-j{self.cfg.jobs}", "all-target-libgcc"], cwd=bdir, env=tool_env)
-        log.run(["make", "install-target-libgcc"], cwd=bdir, env=tool_env)
+        self._make(bdir, "libgcc-build", "all-target-libgcc", tool_env)
+        self._run_logged(["make", "install-target-libgcc"], "libgcc-install", cwd=bdir, env=tool_env)
 
     def _build_all(self) -> None:
         for a in self.cfg.arches:

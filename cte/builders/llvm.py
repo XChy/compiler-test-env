@@ -32,14 +32,30 @@ class LLVMBuilder(Builder):
             f"-DLLVM_ENABLE_PROJECTS={';'.join(c.projects)}",
             f"-DLLVM_TARGETS_TO_BUILD={targets}",
             "-DLLVM_ENABLE_ASSERTIONS=ON",
+            "-DLLVM_INCLUDE_TESTS=OFF",
+            "-DLLVM_INCLUDE_EXAMPLES=OFF",
+            "-DLLVM_INCLUDE_BENCHMARKS=OFF",
+            "-DLLVM_BUILD_UTILS=OFF",
+            "-DLLVM_ENABLE_BINDINGS=OFF",
         ]
+        # ccache makes subsequent trunk updates substantially cheaper while
+        # remaining optional for hosts that do not provide it.
+        import shutil
+        if shutil.which("ccache"):
+            cmake_args += [
+                "-DCMAKE_C_COMPILER_LAUNCHER=ccache",
+                "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache",
+            ]
         if c.runtimes:
             cmake_args.append(f"-DLLVM_ENABLE_RUNTIMES={';'.join(c.runtimes)}")
         cmake_args += c.extra_cmake_args
 
-        log.run(cmake_args)
-        log.run(["ninja", "-C", str(self.build), f"-j{self.cfg.jobs}"])
-        log.run(["ninja", "-C", str(self.build), "install"])
+        log.info("configuring LLVM (details: configure.log)")
+        self._run_logged(cmake_args, "configure")
+        log.info("building LLVM (details: build.log)")
+        self._run_logged(["ninja", "-C", str(self.build), f"-j{self.cfg.jobs}"], "build")
+        log.info("installing LLVM (details: install.log)")
+        self._run_logged(["ninja", "-C", str(self.build), "install"], "install")
 
     def install(self) -> None:
         log.info(f"installing LLVM/Clang ({self.cfg.llvm.ref})")
