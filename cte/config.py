@@ -85,6 +85,7 @@ class QEMUConfig:
 @dataclass
 class Config:
     root: Path
+    work_dir: Path
     prefix: Path
     src_dir: Path
     build_dir: Path
@@ -138,7 +139,7 @@ class Config:
 
 
 def project_root(start: Path | None = None) -> Path:
-    """The stable anchor for src/build/toolchains directories.
+    """The stable anchor for cte-work/src/build/toolchains directories.
 
     Walk up from ``start`` (or CWD) to the nearest ``pyproject.toml``/``.git``;
     this keeps the working directories fixed regardless of where the config file
@@ -161,11 +162,25 @@ def from_data(data: dict, root: Path) -> Config:
     general = data.get("general", {})
 
     jobs = int(general.get("jobs", 0)) or (os.cpu_count() or 1)
+    work_dir = _resolve_dir(root, general.get("work_dir", "cte-work"))
     cfg = Config(
         root=root,
-        prefix=_resolve_dir(root, general.get("prefix", "toolchains")),
-        src_dir=_resolve_dir(root, general.get("src_dir", "src")),
-        build_dir=_resolve_dir(root, general.get("build_dir", "build")),
+        work_dir=work_dir,
+        prefix=(
+            _resolve_dir(root, general["prefix"])
+            if "prefix" in general
+            else work_dir / "toolchains"
+        ),
+        src_dir=(
+            _resolve_dir(root, general["src_dir"])
+            if "src_dir" in general
+            else work_dir / "src"
+        ),
+        build_dir=(
+            _resolve_dir(root, general["build_dir"])
+            if "build_dir" in general
+            else work_dir / "build"
+        ),
         jobs=jobs,
         architectures=general.get("architectures", ["x86_64"]),
         llvm=LLVMConfig(**data.get("llvm", {})),
@@ -192,9 +207,8 @@ def defaults(root: Path | None = None) -> Config:
 def load(path: Path) -> Config:
     """Load config from ``path``.
 
-    A missing file is only an error if the user pointed us at a specific one;
-    the default ``./config.toml`` simply falls back to built-in defaults so the
-    tool works with zero setup.
+    The CLI defaults to ``./configs/common.toml``; point ``-c`` at another
+    preset or a local ``config.toml`` to customise it.
     """
     if not path.exists():
         raise FileNotFoundError(
@@ -204,7 +218,8 @@ def load(path: Path) -> Config:
     with path.open("rb") as fh:
         data = tomllib.load(fh)
     # Presets live under ``configs/`` but their relative directories must still
-    # be shared project directories (``./toolchains``, ``./src``, ``./build``),
+    # be shared project directories (``./cte-work/toolchains``,
+    # ``./cte-work/src``, ``./cte-work/build``),
     # not siblings of the preset.  This also matches ``project_root``'s stated
-    # invariant and makes `cte -c configs/common.toml install` unsurprising.
+    # invariant and makes the default `configs/common.toml` path unsurprising.
     return from_data(data, project_root(path.resolve().parent))

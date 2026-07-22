@@ -2,12 +2,13 @@
 # Copy this file to config.toml and edit it:  cp config.example.toml config.toml
 
 [general]
-# Where built toolchains are installed. This directory is NEVER added to PATH;
-# use `cte env` / activate.sh to put tools on PATH on demand.
-prefix = "toolchains"
-# Where sources are cloned / extracted, and where they are built.
-src_dir = "src"
-build_dir = "build"
+# Where CTE keeps all generated state by default:
+#   cte-work/src, cte-work/build, cte-work/toolchains
+work_dir = "cte-work"
+# Override these only if you want to split the generated trees.
+# prefix = "cte-work/toolchains"
+# src_dir = "cte-work/src"
+# build_dir = "cte-work/build"
 # Parallelism. 0 = autodetect (number of CPUs).
 jobs = 0
 # Architectures to target. See `cte list-arch` for the full list.

@@ -43,7 +43,10 @@ def cmd_clean(cfg: Config, args) -> None:
 
 
 def cmd_status(cfg: Config, args) -> None:
+    print(f"work dir:      {cfg.work_dir}")
     print(f"prefix:        {cfg.prefix}")
+    print(f"src dir:       {cfg.src_dir}")
+    print(f"build dir:     {cfg.build_dir}")
     print(f"architectures: {', '.join(cfg.architectures)}")
     print(f"jobs:          {cfg.jobs}")
     print("components:")
@@ -136,8 +139,8 @@ def build_parser() -> argparse.ArgumentParser:
         "across multiple architectures.",
     )
     p.add_argument(
-        "-c", "--config", type=Path, default=Path("config.toml"),
-        help="path to config file (default: ./config.toml)",
+        "-c", "--config", type=Path, default=Path("configs/common.toml"),
+        help="path to config file (default: ./configs/common.toml)",
     )
     sub = p.add_subparsers(dest="command", required=True)
 
@@ -175,12 +178,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
-        if args.config == parser.get_default("config") and not args.config.exists():
-            log.warn("no config.toml found; using built-in defaults "
-                     "(copy config.example.toml to customise)")
-            cfg = config_mod.defaults(Path.cwd())
-        else:
-            cfg = config_mod.load(args.config)
+        cfg = config_mod.load(args.config)
         args.func(cfg, args)
     except KeyboardInterrupt:
         log.error("interrupted")

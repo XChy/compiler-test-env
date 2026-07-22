@@ -61,13 +61,9 @@ class Builder:
         log.run_to_log(cmd, directory / f"{phase}.log", cwd=directory, env=env)
 
     # --- shared git helpers ---------------------------------------------
-    # Git options that make large clones over flaky links survive better:
-    # a big send buffer, and a low-speed timeout so a stalled transfer fails
-    # fast (and is retried) instead of hanging.
+    # Git options shared by large source syncs.
     _GIT_TUNING = [
         "-c", "http.postBuffer=1048576000",
-        "-c", "http.lowSpeedLimit=1000",
-        "-c", "http.lowSpeedTime=60",
     ]
 
     def _git_sync(self, repo: str, ref: str, shallow: bool) -> None:

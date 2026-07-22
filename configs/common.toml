@@ -1,6 +1,6 @@
 # Preset: common architectures (x86-64, riscv64, aarch64).
 # A practical multi-arch set for day-to-day cross testing.
-# Use it with:  cte -c configs/common.toml install
+# This is the default preset used by plain:  cte install
 
 [general]
 architectures = ["x86_64", "riscv64", "aarch64"]

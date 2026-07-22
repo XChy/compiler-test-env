@@ -28,7 +28,7 @@ the toolchains isolated so they can't shadow your system compilers.
   so asan/ubsan/tsan and friends are available out of the box.
 - **Presets** — drop-in configs in `configs/` for x86-64, a common multi-arch
   set, or everything.
-- **Never on PATH** — toolchains live under `toolchains/`; opt in per-shell with
+- **Never on PATH** — toolchains live under `cte-work/toolchains/`; opt in per-shell with
   a generated `activate.sh`, or use the `CLANG` / `GCC_<arch>` / `QEMU_<arch>`
   variables it exports.
 - **Configurable** — one `config.toml`; sensible defaults.
@@ -95,13 +95,14 @@ python3 -m cte --help
 
 ## Quick start
 
-It runs with zero setup — without a `config.toml` it uses built-in defaults
-(LLVM `main` + latest stable QEMU, targeting `x86_64`):
+It runs with zero setup — by default it uses `configs/common.toml`
+(LLVM/GCC `main`/`master` + latest stable QEMU, targeting `x86_64`,
+`riscv64`, and `aarch64`):
 
 ```bash
 cte status                              # works out of the box
 cte list-arch                           # see supported architectures
-cte install                             # build everything that's enabled
+cte install                             # build everything enabled by configs/common.toml
 ```
 
 To customise (architectures, enable GCC, etc.), drop in a config:
@@ -123,14 +124,14 @@ Clang + GCC trunk with sanitizers via `compiler-rt`):
 | [`configs/all.toml`](configs/all.toml) | every supported architecture | linux-user |
 
 ```bash
-cte -c configs/common.toml install
+cte install
 ```
 
 Use the freshly built tools in your current shell only (this is the *opt-in*
 PATH step — nothing is global):
 
 ```bash
-source toolchains/activate.sh
+source cte-work/toolchains/activate.sh
 
 "$CLANG" --target=aarch64-linux-musl --sysroot="$SYSROOT_AARCH64" --gcc-toolchain="$GCC_TOOLCHAIN_AARCH64" -fuse-ld=lld -O2 hello.c -o hello
 "$QEMU_AARCH64" -L "$SYSROOT_AARCH64" ./hello
@@ -151,13 +152,13 @@ Or skip `PATH` entirely and call tools by their exported variables:
 | `cte install [sysroot\|llvm\|gcc\|qemu\|all]` | Clone/fetch sources, configure, build, install into the prefix. |
 | `cte update  [sysroot\|llvm\|gcc\|qemu\|all]` | Re-sync to latest trunk / newest stable QEMU and rebuild. |
 | `cte status` | Show enabled components and install state. |
-| `cte env [--write]` | Print the activation script (or write `toolchains/activate.sh`). |
+| `cte env [--write]` | Print the activation script (or write `cte-work/toolchains/activate.sh`). |
 | `cte clean  [sysroot\|llvm\|gcc\|qemu\|all]` | Remove build and install trees. |
 | `cte list-arch` | List supported architectures and their target identifiers. |
 | `cte verify` | Link and, when QEMU is available, run every configured target. |
 
 With no component argument, commands act on whatever is `enabled` in the config.
-Pass `-c/--config` to use a config file other than `./config.toml`.
+Pass `-c/--config` to use a config file other than `./configs/common.toml`.
 
 ## Configuration
 
@@ -165,7 +166,8 @@ Everything lives in `config.toml` (copy from `config.example.toml`). Key knobs:
 
 ```toml
 [general]
-prefix = "toolchains"                       # install root — never on PATH
+work_dir = "cte-work"                       # generated src/build/install root
+# prefix/src_dir/build_dir default to paths under work_dir
 jobs = 0                                     # 0 = autodetect CPUs
 architectures = ["x86_64", "aarch64", "riscv64"]
 
@@ -217,12 +219,13 @@ cte/
     qemu.py         # latest-stable QEMU (auto version resolution)
 ```
 
-Sources are cloned into `src/`, built in `build/`, and installed into
-`toolchains/<component>/`. The first three are git-ignored.
+Sources are cloned into `cte-work/src/`, built in `cte-work/build/`, and
+installed into `cte-work/toolchains/<component>/`. The whole `cte-work/` tree is
+git-ignored.
 Detailed configure/build/install output is written beside each component's
-build directory (for example `build/llvm/build.log` and
-`build/gcc/<target>/build.log`). Terminal output reports only high-level build
-stages and prints the final log lines if a stage fails.
+build directory (for example `cte-work/build/llvm/build.log` and
+`cte-work/build/gcc/<target>/build.log`). Terminal output reports only
+high-level build stages and prints the final log lines if a stage fails.
 
 ## Notes & caveats
 
