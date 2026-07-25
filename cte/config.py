@@ -1,6 +1,6 @@
 """Configuration loading and validation.
 
-Config is TOML. See ``config.example.toml`` for the documented schema.
+Config is TOML. See ``configs/example.toml`` for the documented schema.
 """
 
 from __future__ import annotations
@@ -16,6 +16,9 @@ except ModuleNotFoundError:  # pragma: no cover - exercised on 3.10
     import tomli as tomllib  # type: ignore
 
 from . import arch
+
+DEFAULT_CONFIG = Path("configs/common.toml")
+DEFAULT_CONFIG_POINTER = ".cte-config"
 
 _MUSL_TRIPLES = {
     "x86_64": "x86_64-linux-musl", "aarch64": "aarch64-linux-musl",
@@ -204,6 +207,38 @@ def defaults(root: Path | None = None) -> Config:
     return from_data({}, root or project_root())
 
 
+def config_pointer_path(root: Path | None = None) -> Path:
+    """Return the local file that stores the persistent default config path."""
+    return (root or project_root()) / DEFAULT_CONFIG_POINTER
+
+
+def resolve_config_path(path: Path | None, root: Path | None = None) -> Path:
+    """Resolve CLI/default config paths against the CTE project root."""
+    base = root or project_root()
+    if path is not None:
+        p = Path(os.path.expanduser(str(path)))
+        return p if p.is_absolute() else base / p
+
+    pointer = config_pointer_path(base)
+    if pointer.exists():
+        value = pointer.read_text().strip()
+        if value:
+            p = Path(os.path.expanduser(value))
+            return p if p.is_absolute() else base / p
+    return base / DEFAULT_CONFIG
+
+
+def set_default_config(path: Path, root: Path | None = None) -> Path:
+    """Persist the default config used when the CLI omits -c/--config."""
+    base = root or project_root()
+    resolved = resolve_config_path(path, base)
+    if not resolved.exists():
+        raise FileNotFoundError(f"config file not found: {resolved}")
+    pointer = config_pointer_path(base)
+    pointer.write_text(str(path) + "\n")
+    return resolved
+
+
 def load(path: Path) -> Config:
     """Load config from ``path``.
 
@@ -213,7 +248,7 @@ def load(path: Path) -> Config:
     if not path.exists():
         raise FileNotFoundError(
             f"config file not found: {path}\n"
-            "Copy config.example.toml to config.toml and edit it."
+            "Copy configs/example.toml to config.toml and edit it."
         )
     with path.open("rb") as fh:
         data = tomllib.load(fh)

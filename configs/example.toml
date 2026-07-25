@@ -1,5 +1,5 @@
 # compiler-test-env configuration.
-# Copy this file to config.toml and edit it:  cp config.example.toml config.toml
+# Copy this file to config.toml and edit it:  cp configs/example.toml config.toml
 
 [general]
 # Where CTE keeps all generated state by default:

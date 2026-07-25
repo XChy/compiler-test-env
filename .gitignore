@@ -219,6 +219,7 @@ __marimo__/
 
 # compiler-test-env: local config and generated trees
 /config.toml
+/.cte-config
 /cte-work/
 /src/
 /build/

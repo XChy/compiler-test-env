@@ -132,6 +132,19 @@ def cmd_verify(cfg: Config, args) -> None:
         raise RuntimeError("no target was verified; configure sysroots and install a compiler")
 
 
+def cmd_set(args) -> None:
+    resolved = config_mod.set_default_config(args.config_path)
+    log.info(f"default config set to {resolved}")
+
+
+def cmd_config(args) -> None:
+    path = config_mod.resolve_config_path(args.config)
+    source = "command line" if args.config else (
+        "saved default" if config_mod.config_pointer_path().exists() else "built-in default"
+    )
+    print(f"{path} ({source})")
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="cte",
@@ -139,8 +152,8 @@ def build_parser() -> argparse.ArgumentParser:
         "across multiple architectures.",
     )
     p.add_argument(
-        "-c", "--config", type=Path, default=Path("configs/common.toml"),
-        help="path to config file (default: ./configs/common.toml)",
+        "-c", "--config", type=Path, default=None,
+        help="path to config file (overrides saved/default config)",
     )
     sub = p.add_subparsers(dest="command", required=True)
 
@@ -171,6 +184,13 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("verify", help="link and, when available, run each configured target")
     s.set_defaults(func=cmd_verify)
 
+    s = sub.add_parser("set", help="persist the default config for future commands")
+    s.add_argument("config_path", type=Path, help="config file to use by default")
+    s.set_defaults(func=cmd_set, needs_config=False)
+
+    s = sub.add_parser("config", help="show the config path selected by default")
+    s.set_defaults(func=cmd_config, needs_config=False)
+
     return p
 
 
@@ -178,8 +198,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
-        cfg = config_mod.load(args.config)
-        args.func(cfg, args)
+        if getattr(args, "needs_config", True):
+            cfg = config_mod.load(config_mod.resolve_config_path(args.config))
+            args.func(cfg, args)
+        else:
+            args.func(args)
     except KeyboardInterrupt:
         log.error("interrupted")
         return 130

@@ -108,9 +108,14 @@ cte install                             # build everything enabled by configs/co
 To customise (architectures, enable GCC, etc.), drop in a config:
 
 ```bash
-cp config.example.toml config.toml
+cp configs/example.toml config.toml
 $EDITOR config.toml
+cte set config.toml
 ```
+
+After `cte set`, commands such as `cte status`, `cte install`, and `cte verify`
+use that saved config automatically.  Pass `-c/--config` to override it for one
+command without changing the saved default.
 
 ### Ready-made presets
 
@@ -152,17 +157,21 @@ Or skip `PATH` entirely and call tools by their exported variables:
 | `cte install [sysroot\|llvm\|gcc\|qemu\|all]` | Clone/fetch sources, configure, build, install into the prefix. |
 | `cte update  [sysroot\|llvm\|gcc\|qemu\|all]` | Re-sync to latest trunk / newest stable QEMU and rebuild. |
 | `cte status` | Show enabled components and install state. |
+| `cte set CONFIG` | Persist CONFIG as the default for future commands. |
+| `cte config` | Show the config path selected by default. |
 | `cte env [--write]` | Print the activation script (or write `cte-work/toolchains/activate.sh`). |
 | `cte clean  [sysroot\|llvm\|gcc\|qemu\|all]` | Remove build and install trees. |
 | `cte list-arch` | List supported architectures and their target identifiers. |
 | `cte verify` | Link and, when QEMU is available, run every configured target. |
 
 With no component argument, commands act on whatever is `enabled` in the config.
-Pass `-c/--config` to use a config file other than `./configs/common.toml`.
+Run `cte set CONFIG` once to change the default config, or pass `-c/--config`
+to use another config for a single command.  With no saved default, CTE uses
+`./configs/common.toml`.
 
 ## Configuration
 
-Everything lives in `config.toml` (copy from `config.example.toml`). Key knobs:
+Everything lives in `config.toml` (copy from `configs/example.toml`). Key knobs:
 
 ```toml
 [general]
