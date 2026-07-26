@@ -36,7 +36,7 @@ def render(cfg: Config) -> str:
     ]
 
     if cfg.llvm.enabled and _llvm_bin(cfg).exists():
-        lines.append(f'export CLANG="{_llvm_bin(cfg) / "clang"}"')
+        lines.append(f'export CLANG_TRUNK="{_llvm_bin(cfg) / "clang"}"')
     # Per-arch compiler/runner pointers (no PATH needed to use these).
     for a in cfg.arches:
         var = a.name.upper().replace("-", "_")
@@ -44,7 +44,7 @@ def render(cfg: Config) -> str:
             triple = cfg.target_triple(a)
             gcc_root = _gcc_root(cfg) / triple
             gcc = gcc_root / "bin" / f"{triple}-gcc"
-            lines.append(f'export GCC_{var}="{gcc}"')
+            lines.append(f'export GCC_{var}_TRUNK="{gcc}"')
             lines.append(f'export GCC_TOOLCHAIN_{var}="{gcc_root}"')
         sysroot = cfg.sysroot_for(a)
         if sysroot:

@@ -16,6 +16,7 @@ them when a target libc/headers are available:
 
 from __future__ import annotations
 
+import json
 import os
 import platform
 from pathlib import Path
@@ -52,9 +53,10 @@ class GCCBuilder(Builder):
 
     @staticmethod
     def _tool_env(binutils: Path | None) -> dict | None:
-        if binutils is None:
-            return None
-        return {"PATH": f"{binutils}{os.pathsep}{os.environ['PATH']}"}
+        env = {}
+        if binutils is not None:
+            env["PATH"] = f"{binutils}{os.pathsep}{os.environ['PATH']}"
+        return env or None
 
     @staticmethod
     def _require_linker_tools(binutils: Path, triple: str) -> tuple[Path, Path]:
@@ -65,6 +67,77 @@ class GCCBuilder(Builder):
 
     def _make(self, bdir: Path, phase: str, target: str, env: dict | None) -> None:
         self._run_logged(["make", f"-j{self.cfg.jobs}", target], phase, cwd=bdir, env=env)
+
+    def _make_install(self, bdir: Path, phase: str, target: str, env: dict | None) -> None:
+        self._run_logged(["make", f"-j{self.cfg.jobs}", target], phase, cwd=bdir, env=env)
+
+    @staticmethod
+    def _configure_state(bdir: Path) -> Path:
+        return bdir / ".cte-configure.json"
+
+    @staticmethod
+    def _build_state(bdir: Path) -> Path:
+        return bdir / ".cte-build.json"
+
+    @staticmethod
+    def _env_state(env: dict | None) -> dict[str, str]:
+        state = {}
+        for key, value in (env or {}).items():
+            if key == "PATH":
+                state["BINUTILS_PATH"] = value.split(os.pathsep, 1)[0]
+            else:
+                state[key] = value
+        return dict(sorted(state.items()))
+
+    def _configure_if_needed(
+        self, bdir: Path, configure: list[str], phase: str, env: dict | None
+    ) -> None:
+        state_path = self._configure_state(bdir)
+        state = {
+            "configure": [str(arg) for arg in configure],
+            "env": self._env_state(env),
+        }
+        try:
+            previous = json.loads(state_path.read_text(encoding="utf-8"))
+        except (FileNotFoundError, json.JSONDecodeError):
+            previous = None
+
+        if previous == state and (bdir / "config.status").is_file():
+            log.info(f"reusing GCC configure for {bdir.name}")
+            return
+
+        self._run_logged(configure, phase, cwd=bdir, env=env)
+        state_path.write_text(
+            json.dumps(state, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+
+    def _source_rev(self) -> str:
+        return log.capture(["git", "rev-parse", "HEAD"], cwd=self.src)
+
+    def _build_signature(self, configure: list[str], env: dict | None) -> dict:
+        return {
+            "source": self._source_rev(),
+            "configure": [str(arg) for arg in configure],
+            "env": self._env_state(env),
+        }
+
+    def _build_is_current(
+        self, bdir: Path, configure: list[str], env: dict | None, compiler: Path
+    ) -> bool:
+        if not compiler.is_file():
+            return False
+        try:
+            previous = json.loads(self._build_state(bdir).read_text(encoding="utf-8"))
+        except (FileNotFoundError, json.JSONDecodeError):
+            return False
+        return previous == self._build_signature(configure, env)
+
+    def _mark_build_current(self, bdir: Path, configure: list[str], env: dict | None) -> None:
+        self._build_state(bdir).write_text(
+            json.dumps(self._build_signature(configure, env), indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
 
     def _sync(self) -> None:
         c = self.cfg.gcc
@@ -128,9 +201,14 @@ class GCCBuilder(Builder):
                 else "--disable-libsanitizer"
             )
             configure += c.extra_configure_args
-            self._run_logged(configure, "configure", cwd=bdir, env=tool_env)
+            compiler = idir / "bin" / f"{triple}-gcc"
+            if self._build_is_current(bdir, configure, tool_env, compiler):
+                log.info(f"reusing installed GCC for {a.name} ({triple})")
+                return
+            self._configure_if_needed(bdir, configure, "configure", tool_env)
             self._make(bdir, "build", "all", tool_env)
-            self._run_logged(["make", "install"], "install", cwd=bdir, env=tool_env)
+            self._make_install(bdir, "install", "install", tool_env)
+            self._mark_build_current(bdir, configure, tool_env)
         else:
             if c.sanitizers:
                 log.warn(
@@ -148,10 +226,15 @@ class GCCBuilder(Builder):
                 "--disable-libsanitizer",
             ]
             configure += c.extra_configure_args
-            self._run_logged(configure, "configure", cwd=bdir, env=tool_env)
+            compiler = idir / "bin" / f"{triple}-gcc"
+            if self._build_is_current(bdir, configure, tool_env, compiler):
+                log.info(f"reusing installed GCC for {a.name} ({triple})")
+                return
+            self._configure_if_needed(bdir, configure, "configure", tool_env)
             # all-gcc / install-gcc gives a working compiler without a full libc.
             self._make(bdir, "build", "all-gcc", tool_env)
-            self._run_logged(["make", "install-gcc"], "install", cwd=bdir, env=tool_env)
+            self._make_install(bdir, "install", "install-gcc", tool_env)
+            self._mark_build_current(bdir, configure, tool_env)
 
     def build_bootstrap(self, a: Arch, binutils: Path, sysroot: Path) -> Path:
         """Build the headerless GCC needed to compile musl for ``a``."""
@@ -180,9 +263,14 @@ class GCCBuilder(Builder):
             f"--with-sysroot={sysroot}",
         ]
         tool_env = self._tool_env(binutils)
-        self._run_logged(configure, "configure", cwd=bdir, env=tool_env)
+        compiler = prefix / "bin" / f"{triple}-gcc"
+        if self._build_is_current(bdir, configure, tool_env, compiler):
+            log.info(f"reusing bootstrap GCC for {a.name} ({triple})")
+            return prefix
+        self._configure_if_needed(bdir, configure, "configure", tool_env)
         self._make(bdir, "build", "all-gcc", tool_env)
-        self._run_logged(["make", "install-gcc"], "install", cwd=bdir, env=tool_env)
+        self._make_install(bdir, "install", "install-gcc", tool_env)
+        self._mark_build_current(bdir, configure, tool_env)
         return prefix
 
     def build_bootstrap_libgcc(self, a: Arch) -> None:
@@ -195,7 +283,7 @@ class GCCBuilder(Builder):
         # RISC-V long-double __addtf3 family).  A headerless GCC stage still
         # needs musl's public headers before it can build libgcc.
         self._make(bdir, "libgcc-build", "all-target-libgcc", tool_env)
-        self._run_logged(["make", "install-target-libgcc"], "libgcc-install", cwd=bdir, env=tool_env)
+        self._make_install(bdir, "libgcc-install", "install-target-libgcc", tool_env)
 
     def _build_all(self) -> None:
         for a in self.cfg.arches:

@@ -29,7 +29,7 @@ the toolchains isolated so they can't shadow your system compilers.
 - **Presets** — drop-in configs in `configs/` for x86-64, a common multi-arch
   set, or everything.
 - **Never on PATH** — toolchains live under `cte-work/toolchains/`; opt in per-shell with
-  a generated `activate.sh`, or use the `CLANG` / `GCC_<arch>` / `QEMU_<arch>`
+  a generated `activate.sh`, or use the `CLANG_TRUNK` / `GCC_<arch>_TRUNK` / `QEMU_<arch>`
   variables it exports.
 - **Configurable** — one `config.toml`; sensible defaults.
 
@@ -138,15 +138,15 @@ PATH step — nothing is global):
 ```bash
 source cte-work/toolchains/activate.sh
 
-"$CLANG" --target=aarch64-linux-musl --sysroot="$SYSROOT_AARCH64" --gcc-toolchain="$GCC_TOOLCHAIN_AARCH64" -fuse-ld=lld -O2 hello.c -o hello
+"$CLANG_TRUNK" --target=aarch64-linux-musl --sysroot="$SYSROOT_AARCH64" --gcc-toolchain="$GCC_TOOLCHAIN_AARCH64" -fuse-ld=lld -O2 hello.c -o hello
 "$QEMU_AARCH64" -L "$SYSROOT_AARCH64" ./hello
 ```
 
 Or skip `PATH` entirely and call tools by their exported variables:
 
 ```bash
-"$CLANG" --target=riscv64-linux-musl --sysroot="$SYSROOT_RISCV64" -c foo.c
-"$GCC_RISCV64" -S foo.c            # if GCC is enabled
+"$CLANG_TRUNK" --target=riscv64-linux-musl --sysroot="$SYSROOT_RISCV64" -c foo.c
+"$GCC_RISCV64_TRUNK" -S foo.c      # if GCC is enabled
 "$QEMU_RISCV64" ./a.out
 ```
 
