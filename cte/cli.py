@@ -90,14 +90,30 @@ def cmd_verify(cfg: Config, args) -> None:
                 raise FileNotFoundError(f"{target.name}: sysroot does not exist: {sysroot}")
             commands: list[tuple[str, list[str]]] = []
             triple = cfg.target_triple(target)
-            gcc = cfg.prefix / "gcc" / triple / "bin" / f"{triple}-gcc"
-            if gcc.is_file():
-                if target.name == "x86_64" or cfg.sysroot.enabled or cfg.binutils_for(target):
-                    commands.append(("gcc", [str(gcc), "-static"]))
-                else:
-                    print(f"SKIP {target.name} (gcc): no [gcc.binutils].{target.name} configured")
-            clang = cfg.prefix / "llvm" / "bin" / "clang"
-            if clang.is_file():
+            for label, root in (
+                ("gcc", cfg.prefix / "gcc"),
+                ("gcc-coverage", cfg.prefix / "gcc-coverage"),
+            ):
+                if label == "gcc-coverage" and not cfg.gcc.coverage:
+                    continue
+                gcc = root / triple / "bin" / f"{triple}-gcc"
+                if gcc.is_file():
+                    if target.name == "x86_64" or cfg.sysroot.enabled or cfg.binutils_for(target):
+                        commands.append((label, [str(gcc), "-static"]))
+                    else:
+                        print(
+                            f"SKIP {target.name} ({label}): "
+                            f"no [gcc.binutils].{target.name} configured"
+                        )
+            for label, root in (
+                ("clang", cfg.prefix / "llvm"),
+                ("clang-coverage", cfg.prefix / "llvm-coverage"),
+            ):
+                if label == "clang-coverage" and not cfg.llvm.coverage:
+                    continue
+                clang = root / "bin" / "clang"
+                if not clang.is_file():
+                    continue
                 command = [str(clang), f"--target={triple}", "-fuse-ld=lld", "-static"]
                 if sysroot:
                     command.append(f"--sysroot={sysroot}")
@@ -107,7 +123,7 @@ def cmd_verify(cfg: Config, args) -> None:
                     command.append(f"--gcc-toolchain={gcc_root}")
                 elif bootstrap_root.is_dir():
                     command.append(f"--gcc-toolchain={bootstrap_root}")
-                commands.append(("clang", command))
+                commands.append((label, command))
             if not commands:
                 print(f"SKIP {target.name}: no installed compiler")
                 continue

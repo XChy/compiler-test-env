@@ -22,6 +22,8 @@ libc = "musl"
 
 [llvm]
 enabled = true
+# Also build an independent instrumented tree under toolchains/llvm-coverage.
+coverage = false
 # Trunk. Use "main" for the very latest; a release branch also works.
 ref = "main"
 # SSH by default (needs a GitHub SSH key); HTTPS also works:
@@ -36,6 +38,8 @@ extra_cmake_args = []    # e.g. ["-DLLVM_USE_LINKER=lld"]
 # A GCC cross compiler is built per architecture, which is slower than the
 # single LLVM build. Set to false to skip GCC entirely.
 enabled = true
+# Also build independent instrumented compilers under toolchains/gcc-coverage.
+coverage = false
 ref = "master"           # trunk
 # GitHub mirror (faster/more reliable than gcc.gnu.org). HTTPS also works:
 # https://github.com/gcc-mirror/gcc.git

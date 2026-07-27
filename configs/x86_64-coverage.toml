@@ -1,0 +1,25 @@
+# Preset: x86-64 only, with normal and coverage-instrumented compilers.
+# Use it with:  cte -c configs/x86_64-coverage.toml install
+
+[general]
+architectures = ["x86_64"]
+
+[sysroot]
+# Native binaries run directly with the host libc.
+enabled = false
+
+[llvm]
+enabled = true
+coverage = true
+ref = "main"
+projects = ["clang", "lld"]
+runtimes = ["compiler-rt"]   # sanitizers on by default
+
+[gcc]
+enabled = true
+coverage = true
+ref = "master"
+
+[qemu]
+# Native binaries run directly; QEMU isn't needed for a single host target.
+enabled = false

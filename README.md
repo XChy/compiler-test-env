@@ -125,6 +125,7 @@ Clang + GCC trunk with sanitizers via `compiler-rt`):
 | Preset | Architectures | QEMU |
 | --- | --- | --- |
 | [`configs/x86_64.toml`](configs/x86_64.toml) | `x86_64` | off (runs natively) |
+| [`configs/x86_64-coverage.toml`](configs/x86_64-coverage.toml) | `x86_64` plus separate coverage LLVM/GCC | off (runs natively) |
 | [`configs/common.toml`](configs/common.toml) | `x86_64`, `riscv64`, `aarch64` | linux-user |
 | [`configs/all.toml`](configs/all.toml) | every supported architecture | linux-user |
 
@@ -138,17 +139,28 @@ PATH step — nothing is global):
 ```bash
 source cte-work/toolchains/activate.sh
 
-"$CLANG_TRUNK" --target=aarch64-linux-musl --sysroot="$SYSROOT_AARCH64" --gcc-toolchain="$GCC_TOOLCHAIN_AARCH64" -fuse-ld=lld -O2 hello.c -o hello
+$CLANG_AARCH64_TRUNK -O2 hello.c -o hello
 "$QEMU_AARCH64" -L "$SYSROOT_AARCH64" ./hello
 ```
 
 Or skip `PATH` entirely and call tools by their exported variables:
 
 ```bash
-"$CLANG_TRUNK" --target=riscv64-linux-musl --sysroot="$SYSROOT_RISCV64" -c foo.c
+$CLANG_RISCV64_TRUNK -c foo.c
 "$GCC_RISCV64_TRUNK" -S foo.c      # if GCC is enabled
 "$QEMU_RISCV64" ./a.out
 ```
+
+The per-target `CLANG_<arch>_TRUNK` variables expand to the clang path plus the
+target triple, sysroot, GCC toolchain, and `-fuse-ld=lld` flags when those paths
+are configured. Use them unquoted as shown above; zsh receives these as arrays,
+while bash receives a scalar command line.
+
+When `coverage = true` is set under `[llvm]` or `[gcc]`, CTE keeps the normal
+compiler and adds independent instrumented installs under
+`toolchains/llvm-coverage` and `toolchains/gcc-coverage`. The activation script
+exports `CLANG_COVERAGE_TRUNK`, `GCC_<arch>_COVERAGE_TRUNK`, and
+`GCC_COVERAGE_TOOLCHAIN_<arch>` alongside the normal variables.
 
 ## Commands
 
@@ -186,11 +198,13 @@ libc = "musl"                               # cross triples become *-linux-musl
 
 [llvm]
 enabled = true
+coverage = false                            # also build toolchains/llvm-coverage
 ref = "main"                                 # trunk
 projects = ["clang", "lld"]
 
 [gcc]
 enabled = true                               # one cross compiler per arch
+coverage = false                            # also build toolchains/gcc-coverage
 ref = "master"                               # trunk
 
 [gcc.sysroots]

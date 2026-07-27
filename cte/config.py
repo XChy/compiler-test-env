@@ -33,6 +33,7 @@ _MUSL_TRIPLES = {
 @dataclass
 class LLVMConfig:
     enabled: bool = True
+    coverage: bool = False
     ref: str = "main"
     repo: str = "git@github.com:llvm/llvm-project.git"
     projects: list[str] = field(default_factory=lambda: ["clang", "lld"])
@@ -45,6 +46,7 @@ class LLVMConfig:
 @dataclass
 class GCCConfig:
     enabled: bool = True
+    coverage: bool = False
     ref: str = "master"
     repo: str = "git@github.com:gcc-mirror/gcc.git"
     languages: list[str] = field(default_factory=lambda: ["c", "c++"])

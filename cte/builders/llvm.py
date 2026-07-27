@@ -17,18 +17,26 @@ class LLVMBuilder(Builder):
         c = self.cfg.llvm
         self._git_sync(c.repo, c.ref, c.shallow)
 
-    def _configure_and_build(self) -> None:
+    def _build_dir(self, coverage: bool):
+        return self.cfg.build_dir / ("llvm-coverage" if coverage else "llvm")
+
+    def _install_dir(self, coverage: bool):
+        return self.cfg.prefix / ("llvm-coverage" if coverage else "llvm")
+
+    def _configure_and_build(self, coverage: bool = False) -> None:
         log.require("cmake", "ninja")
         c = self.cfg.llvm
         targets = arch.llvm_targets(self.cfg.arches)
-        self.build.mkdir(parents=True, exist_ok=True)
+        build = self._build_dir(coverage)
+        install_dir = self._install_dir(coverage)
+        build.mkdir(parents=True, exist_ok=True)
 
         cmake_args = [
             "cmake", "-G", "Ninja",
             "-S", str(self.src / "llvm"),
-            "-B", str(self.build),
+            "-B", str(build),
             "-DCMAKE_BUILD_TYPE=Release",
-            f"-DCMAKE_INSTALL_PREFIX={self.install_dir}",
+            f"-DCMAKE_INSTALL_PREFIX={install_dir}",
             f"-DLLVM_ENABLE_PROJECTS={';'.join(c.projects)}",
             f"-DLLVM_TARGETS_TO_BUILD={targets}",
             "-DLLVM_ENABLE_ASSERTIONS=ON",
@@ -48,23 +56,74 @@ class LLVMBuilder(Builder):
             ]
         if c.runtimes:
             cmake_args.append(f"-DLLVM_ENABLE_RUNTIMES={';'.join(c.runtimes)}")
+        if coverage:
+            normal_bin = self._install_dir(False) / "bin"
+            clang = normal_bin / "clang"
+            clangxx = normal_bin / "clang++"
+            if clang.is_file() and clangxx.is_file():
+                cmake_args += [
+                    f"-DCMAKE_C_COMPILER={clang}",
+                    f"-DCMAKE_CXX_COMPILER={clangxx}",
+                ]
+            else:
+                log.warn(
+                    "LLVM coverage build works best with Clang; "
+                    f"expected {clang} and {clangxx}"
+                )
+            cmake_args.append("-DLLVM_BUILD_INSTRUMENTED_COVERAGE=ON")
         cmake_args += c.extra_cmake_args
 
-        log.info("configuring LLVM (details: configure.log)")
-        self._run_logged(cmake_args, "configure")
-        log.info("building LLVM (details: build.log)")
-        self._run_logged(["ninja", "-C", str(self.build), f"-j{self.cfg.jobs}"], "build")
-        log.info("installing LLVM (details: install.log)")
-        self._run_logged(["ninja", "-C", str(self.build), "install"], "install")
+        label = "LLVM coverage" if coverage else "LLVM"
+        log.info(f"configuring {label} (details: configure.log)")
+        self._run_logged(cmake_args, "configure", cwd=build)
+        log.info(f"building {label} (details: build.log)")
+        self._run_logged(["ninja", "-C", str(build), f"-j{self.cfg.jobs}"], "build", cwd=build)
+        log.info(f"installing {label} (details: install.log)")
+        self._run_logged(["ninja", "-C", str(build), "install"], "install", cwd=build)
+
+    def clean(self) -> None:
+        import shutil
+
+        for p in (self._build_dir(False), self._install_dir(False)):
+            if p.exists():
+                log.step(f"removing {p}")
+                shutil.rmtree(p)
+        if self.cfg.llvm.coverage:
+            for p in (self._build_dir(True), self._install_dir(True)):
+                if p.exists():
+                    log.step(f"removing {p}")
+                    shutil.rmtree(p)
+
+    def status(self) -> str:
+        states = []
+        for coverage in (False, True):
+            if coverage and not self.cfg.llvm.coverage:
+                continue
+            label = "coverage" if coverage else "normal"
+            install_dir = self._install_dir(coverage)
+            build = self._build_dir(coverage)
+            if (install_dir / "bin").exists():
+                states.append(f"{label}: installed at {install_dir}")
+            elif build.exists():
+                states.append(f"{label}: build tree exists, not installed")
+            elif self.src.exists():
+                states.append(f"{label}: source fetched, not installed")
+            else:
+                states.append(f"{label}: not installed")
+        return "; ".join(states)
 
     def install(self) -> None:
         log.info(f"installing LLVM/Clang ({self.cfg.llvm.ref})")
         self._sync()
-        self._configure_and_build()
+        self._configure_and_build(False)
+        if self.cfg.llvm.coverage:
+            self._configure_and_build(True)
         log.info(f"LLVM installed at {self.install_dir} ({self._describe_src()})")
 
     def update(self) -> None:
         log.info("updating LLVM/Clang to trunk")
         self._sync()
-        self._configure_and_build()
+        self._configure_and_build(False)
+        if self.cfg.llvm.coverage:
+            self._configure_and_build(True)
         log.info(f"LLVM updated to {self._describe_src()}")

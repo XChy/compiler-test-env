@@ -8,6 +8,7 @@ that point straight at the right compiler without touching PATH at all.
 
 from __future__ import annotations
 
+import shlex
 from pathlib import Path
 
 from . import arch
@@ -18,12 +19,44 @@ def _llvm_bin(cfg: Config) -> Path:
     return cfg.prefix / "llvm" / "bin"
 
 
+def _llvm_coverage_bin(cfg: Config) -> Path:
+    return cfg.prefix / "llvm-coverage" / "bin"
+
+
 def _gcc_root(cfg: Config) -> Path:
     return cfg.prefix / "gcc"
 
 
+def _gcc_coverage_root(cfg: Config) -> Path:
+    return cfg.prefix / "gcc-coverage"
+
+
 def _qemu_bin(cfg: Config) -> Path:
     return cfg.prefix / "qemu" / "bin"
+
+
+def _clang_args(
+    clang: Path, triple: str, sysroot: Path | None, gcc_root: Path | None
+) -> list[str]:
+    args = [str(clang), f"--target={triple}"]
+    if sysroot:
+        args.append(f"--sysroot={sysroot}")
+    if gcc_root:
+        args.append(f"--gcc-toolchain={gcc_root}")
+    args.append("-fuse-ld=lld")
+    return args
+
+
+def _clang_var(var: str, args: list[str]) -> list[str]:
+    zsh_array = " ".join(shlex.quote(arg) for arg in args)
+    bash_scalar = " ".join(args)
+    return [
+        'if [ -n "${ZSH_VERSION:-}" ]; then',
+        f"  CLANG_{var}_TRUNK=({zsh_array})",
+        "else",
+        f'  export CLANG_{var}_TRUNK="{bash_scalar}"',
+        "fi",
+    ]
 
 
 def render(cfg: Config) -> str:
@@ -37,16 +70,32 @@ def render(cfg: Config) -> str:
 
     if cfg.llvm.enabled and _llvm_bin(cfg).exists():
         lines.append(f'export CLANG_TRUNK="{_llvm_bin(cfg) / "clang"}"')
+        if cfg.llvm.coverage and _llvm_coverage_bin(cfg).exists():
+            lines.append(
+                f'export CLANG_COVERAGE_TRUNK="{_llvm_coverage_bin(cfg) / "clang"}"'
+            )
     # Per-arch compiler/runner pointers (no PATH needed to use these).
     for a in cfg.arches:
         var = a.name.upper().replace("-", "_")
+        triple = cfg.target_triple(a)
+        sysroot = cfg.sysroot_for(a)
+        clang_gcc_root = None
         if cfg.gcc.enabled:
-            triple = cfg.target_triple(a)
             gcc_root = _gcc_root(cfg) / triple
+            clang_gcc_root = gcc_root
             gcc = gcc_root / "bin" / f"{triple}-gcc"
             lines.append(f'export GCC_{var}_TRUNK="{gcc}"')
             lines.append(f'export GCC_TOOLCHAIN_{var}="{gcc_root}"')
-        sysroot = cfg.sysroot_for(a)
+            if cfg.gcc.coverage:
+                gcc_root = _gcc_coverage_root(cfg) / triple
+                gcc = gcc_root / "bin" / f"{triple}-gcc"
+                lines.append(f'export GCC_{var}_COVERAGE_TRUNK="{gcc}"')
+                lines.append(f'export GCC_COVERAGE_TOOLCHAIN_{var}="{gcc_root}"')
+        if cfg.llvm.enabled and _llvm_bin(cfg).exists():
+            clang = _llvm_bin(cfg) / "clang"
+            lines.extend(
+                _clang_var(var, _clang_args(clang, triple, sysroot, clang_gcc_root))
+            )
         if sysroot:
             lines.append(f'export SYSROOT_{var}="{sysroot}"')
         if cfg.qemu.enabled:
