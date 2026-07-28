@@ -24,22 +24,24 @@ def _select(cfg: Config, components: list[str]) -> list[str]:
     return components
 
 
+def _run_components(cfg: Config, components: list[str], action: str) -> None:
+    for name in _select(cfg, components):
+        getattr(builders.get(name, cfg), action)()
+
+
 def cmd_install(cfg: Config, args) -> None:
-    for name in _select(cfg, args.components):
-        builders.get(name, cfg).install()
+    _run_components(cfg, args.components, "install")
     path = env.write(cfg)
     log.info(f"wrote {path} -- run `source {path}` to use the tools")
 
 
 def cmd_update(cfg: Config, args) -> None:
-    for name in _select(cfg, args.components):
-        builders.get(name, cfg).update()
+    _run_components(cfg, args.components, "update")
     env.write(cfg)
 
 
 def cmd_clean(cfg: Config, args) -> None:
-    for name in _select(cfg, args.components):
-        builders.get(name, cfg).clean()
+    _run_components(cfg, args.components, "clean")
 
 
 def cmd_status(cfg: Config, args) -> None:

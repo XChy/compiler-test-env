@@ -35,10 +35,8 @@ def _qemu_bin(cfg: Config) -> Path:
     return cfg.prefix / "qemu" / "bin"
 
 
-def _clang_args(
-    clang: Path, triple: str, sysroot: Path | None, gcc_root: Path | None
-) -> list[str]:
-    args = [str(clang), f"--target={triple}"]
+def _clang_args(triple: str, sysroot: Path | None, gcc_root: Path | None) -> list[str]:
+    args = [f"--target={triple}"]
     if sysroot:
         args.append(f"--sysroot={sysroot}")
     if gcc_root:
@@ -47,15 +45,14 @@ def _clang_args(
     return args
 
 
-def _clang_var(var: str, args: list[str]) -> list[str]:
-    zsh_array = " ".join(shlex.quote(arg) for arg in args)
-    bash_scalar = " ".join(args)
+def _clang_wrapper(var: str, args: list[str]) -> list[str]:
+    name = f"_cte_clang_{var.lower()}_trunk"
+    flags = " ".join(shlex.quote(arg) for arg in args)
     return [
-        'if [ -n "${ZSH_VERSION:-}" ]; then',
-        f"  CLANG_{var}_TRUNK=({zsh_array})",
-        "else",
-        f'  export CLANG_{var}_TRUNK="{bash_scalar}"',
-        "fi",
+        f"{name}() {{",
+        f'  "$CLANG_TRUNK" {flags} "$@"',
+        "}",
+        f'export CLANG_{var}_TRUNK="{name}"',
     ]
 
 
@@ -92,9 +89,8 @@ def render(cfg: Config) -> str:
                 lines.append(f'export GCC_{var}_COVERAGE_TRUNK="{gcc}"')
                 lines.append(f'export GCC_COVERAGE_TOOLCHAIN_{var}="{gcc_root}"')
         if cfg.llvm.enabled and _llvm_bin(cfg).exists():
-            clang = _llvm_bin(cfg) / "clang"
             lines.extend(
-                _clang_var(var, _clang_args(clang, triple, sysroot, clang_gcc_root))
+                _clang_wrapper(var, _clang_args(triple, sysroot, clang_gcc_root))
             )
         if sysroot:
             lines.append(f'export SYSROOT_{var}="{sysroot}"')

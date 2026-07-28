@@ -23,6 +23,9 @@ class LLVMBuilder(Builder):
     def _install_dir(self, coverage: bool):
         return self.cfg.prefix / ("llvm-coverage" if coverage else "llvm")
 
+    def _variants(self) -> list[bool]:
+        return [False, *([True] if self.cfg.llvm.coverage else [])]
+
     def _configure_and_build(self, coverage: bool = False) -> None:
         log.require("cmake", "ninja")
         c = self.cfg.llvm
@@ -82,23 +85,12 @@ class LLVMBuilder(Builder):
         self._run_logged(["ninja", "-C", str(build), "install"], "install", cwd=build)
 
     def clean(self) -> None:
-        import shutil
-
-        for p in (self._build_dir(False), self._install_dir(False)):
-            if p.exists():
-                log.step(f"removing {p}")
-                shutil.rmtree(p)
-        if self.cfg.llvm.coverage:
-            for p in (self._build_dir(True), self._install_dir(True)):
-                if p.exists():
-                    log.step(f"removing {p}")
-                    shutil.rmtree(p)
+        for coverage in self._variants():
+            self._clean_paths(self._build_dir(coverage), self._install_dir(coverage))
 
     def status(self) -> str:
         states = []
-        for coverage in (False, True):
-            if coverage and not self.cfg.llvm.coverage:
-                continue
+        for coverage in self._variants():
             label = "coverage" if coverage else "normal"
             install_dir = self._install_dir(coverage)
             build = self._build_dir(coverage)
@@ -112,18 +104,17 @@ class LLVMBuilder(Builder):
                 states.append(f"{label}: not installed")
         return "; ".join(states)
 
+    def _sync_and_build(self) -> None:
+        self._sync()
+        for coverage in self._variants():
+            self._configure_and_build(coverage)
+
     def install(self) -> None:
         log.info(f"installing LLVM/Clang ({self.cfg.llvm.ref})")
-        self._sync()
-        self._configure_and_build(False)
-        if self.cfg.llvm.coverage:
-            self._configure_and_build(True)
+        self._sync_and_build()
         log.info(f"LLVM installed at {self.install_dir} ({self._describe_src()})")
 
     def update(self) -> None:
         log.info("updating LLVM/Clang to trunk")
-        self._sync()
-        self._configure_and_build(False)
-        if self.cfg.llvm.coverage:
-            self._configure_and_build(True)
+        self._sync_and_build()
         log.info(f"LLVM updated to {self._describe_src()}")

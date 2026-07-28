@@ -50,6 +50,9 @@ class GCCBuilder(Builder):
     def _install_root(self, coverage: bool) -> Path:
         return self.cfg.prefix / ("gcc-coverage" if coverage else "gcc")
 
+    def _variants(self) -> list[bool]:
+        return [False, *([True] if self.cfg.gcc.coverage else [])]
+
     def _binutils_for(self, target: Arch, triple: str, native: bool) -> Path | None:
         """Locate target binutils, preferring an explicitly configured SDK."""
         tools = self.cfg.binutils_for(target)
@@ -301,23 +304,12 @@ class GCCBuilder(Builder):
             self._build_one(a, coverage)
 
     def clean(self) -> None:
-        import shutil
-
-        for p in (self._build_root(False), self._install_root(False)):
-            if p.exists():
-                log.step(f"removing {p}")
-                shutil.rmtree(p)
-        if self.cfg.gcc.coverage:
-            for p in (self._build_root(True), self._install_root(True)):
-                if p.exists():
-                    log.step(f"removing {p}")
-                    shutil.rmtree(p)
+        for coverage in self._variants():
+            self._clean_paths(self._build_root(coverage), self._install_root(coverage))
 
     def status(self) -> str:
         states = []
-        for coverage in (False, True):
-            if coverage and not self.cfg.gcc.coverage:
-                continue
+        for coverage in self._variants():
             label = "coverage" if coverage else "normal"
             install_root = self._install_root(coverage)
             installed = [
@@ -342,18 +334,17 @@ class GCCBuilder(Builder):
                 states.append(f"{label}: not installed")
         return "; ".join(states)
 
+    def _sync_and_build(self) -> None:
+        self._sync()
+        for coverage in self._variants():
+            self._build_all(coverage)
+
     def install(self) -> None:
         log.info(f"installing GCC ({self.cfg.gcc.ref})")
-        self._sync()
-        self._build_all(False)
-        if self.cfg.gcc.coverage:
-            self._build_all(True)
+        self._sync_and_build()
         log.info(f"GCC installed at {self.install_dir} ({self._describe_src()})")
 
     def update(self) -> None:
         log.info("updating GCC to trunk")
-        self._sync()
-        self._build_all(False)
-        if self.cfg.gcc.coverage:
-            self._build_all(True)
+        self._sync_and_build()
         log.info(f"GCC updated to {self._describe_src()}")

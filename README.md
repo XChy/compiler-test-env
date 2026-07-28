@@ -153,8 +153,8 @@ $CLANG_RISCV64_TRUNK -c foo.c
 
 The per-target `CLANG_<arch>_TRUNK` variables expand to the clang path plus the
 target triple, sysroot, GCC toolchain, and `-fuse-ld=lld` flags when those paths
-are configured. Use them unquoted as shown above; zsh receives these as arrays,
-while bash receives a scalar command line.
+are configured. Use them unquoted as shown above; they point at shell wrapper
+functions so the same command works in bash and zsh.
 
 When `coverage = true` is set under `[llvm]` or `[gcc]`, CTE keeps the normal
 compiler and adds independent instrumented installs under

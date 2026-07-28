@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 from .. import log
@@ -46,12 +47,13 @@ class Builder:
         return "not installed"
 
     def clean(self) -> None:
-        import shutil
+        self._clean_paths(self.build, self.install_dir)
 
-        for p in (self.build, self.install_dir):
-            if p.exists():
-                log.step(f"removing {p}")
-                shutil.rmtree(p)
+    def _clean_paths(self, *paths: Path) -> None:
+        for path in paths:
+            if path.exists():
+                log.step(f"removing {path}")
+                shutil.rmtree(path)
 
     def _run_logged(
         self, cmd: list[str], phase: str, cwd: Path | None = None, env: dict | None = None
