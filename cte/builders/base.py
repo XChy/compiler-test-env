@@ -69,7 +69,12 @@ class Builder:
     ]
 
     def _git_sync(self, repo: str, ref: str, shallow: bool) -> None:
-        """Clone (if needed) and fast-forward the source tree to ``ref``."""
+        """Clone or fetch the source tree, then checkout ``ref``.
+
+        ``ref`` may be a branch, tag, or commit-ish.  In particular, pinned
+        release tags do not have an ``origin/<ref>`` tracking branch, so always
+        checkout the fetched object instead of assuming branch semantics.
+        """
         log.require("git")
         import shutil
 
@@ -82,22 +87,18 @@ class Builder:
                     log.step(f"removing partial clone {self.src}")
                     shutil.rmtree(self.src, ignore_errors=True)
 
-            cmd = ["git", *self._GIT_TUNING, "clone"]
+            cmd = ["git", *self._GIT_TUNING, "clone", "--no-checkout"]
             if shallow:
-                cmd += ["--depth", "1", "--branch", ref]
+                cmd += ["--depth", "1"]
             cmd += [repo, str(self.src)]
             log.run_retry(cmd, on_retry=_cleanup_partial)
-            if not shallow:
-                log.run(["git", "checkout", ref], cwd=self.src)
         else:
-            log.info(f"updating {self.name} to latest {ref}")
-            depth = ["--depth", "1"] if shallow else []
-            log.run_retry(
-                ["git", *self._GIT_TUNING, "fetch", *depth, "origin", ref],
-                cwd=self.src,
-            )
-            log.run(["git", "checkout", ref], cwd=self.src)
-            log.run(["git", "reset", "--hard", f"origin/{ref}"], cwd=self.src)
+            log.info(f"syncing {self.name} ({ref})")
+
+        depth = ["--depth", "1"] if shallow else []
+        log.run_retry(["git", *self._GIT_TUNING, "fetch", *depth, "origin", ref], cwd=self.src)
+        log.run(["git", "checkout", "--detach", "FETCH_HEAD"], cwd=self.src)
+        log.run(["git", "reset", "--hard", "FETCH_HEAD"], cwd=self.src)
 
     def _describe_src(self) -> str:
         try:

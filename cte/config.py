@@ -34,6 +34,9 @@ _MUSL_TRIPLES = {
 class LLVMConfig:
     enabled: bool = True
     coverage: bool = False
+    # Git ref to build. `version` is the user-facing spelling for pinned
+    # branches/tags/commits; `ref` is kept for older configs.
+    version: str | None = None
     ref: str = "main"
     repo: str = "git@github.com:llvm/llvm-project.git"
     projects: list[str] = field(default_factory=lambda: ["clang", "lld"])
@@ -42,11 +45,18 @@ class LLVMConfig:
     shallow: bool = True
     extra_cmake_args: list[str] = field(default_factory=list)
 
+    @property
+    def source_ref(self) -> str:
+        return self.version or self.ref
+
 
 @dataclass
 class GCCConfig:
     enabled: bool = True
     coverage: bool = False
+    # Git ref to build. `version` is the user-facing spelling for pinned
+    # branches/tags/commits; `ref` is kept for older configs.
+    version: str | None = None
     ref: str = "master"
     repo: str = "git@github.com:gcc-mirror/gcc.git"
     languages: list[str] = field(default_factory=lambda: ["c", "c++"])
@@ -63,6 +73,10 @@ class GCCConfig:
     # target binutils in addition to the target sysroot to link executables.
     binutils: dict[str, str] = field(default_factory=dict)
     extra_configure_args: list[str] = field(default_factory=list)
+
+    @property
+    def source_ref(self) -> str:
+        return self.version or self.ref
 
 
 @dataclass
