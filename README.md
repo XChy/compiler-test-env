@@ -199,13 +199,13 @@ libc = "musl"                               # cross triples become *-linux-musl
 [llvm]
 enabled = true
 coverage = false                            # also build toolchains/llvm-coverage
-ref = "main"                                 # trunk
+version = "main"                             # branch, tag, or commit
 projects = ["clang", "lld"]
 
 [gcc]
 enabled = true                               # one cross compiler per arch
 coverage = false                            # also build toolchains/gcc-coverage
-ref = "master"                               # trunk
+version = "master"                           # branch, tag, or commit
 
 [gcc.sysroots]
 # aarch64 = "/opt/sysroots/aarch64-linux-gnu"
@@ -220,6 +220,17 @@ enabled = true
 version = "latest"                           # newest stable, or e.g. "9.1.0"
 modes = ["user"]                             # "user" and/or "system"
 ```
+
+`[llvm].version` and `[gcc].version` accept any Git ref that can be fetched from
+the configured repository: trunk branches such as `main`/`master`, release
+branches, tags, or pinned commits. Older configs using `ref = "..."` still work;
+`version` wins when both are present. For arbitrary commits with a shallow
+checkout, set `shallow = false` if the server cannot fetch that commit directly.
+
+Coverage compiler builds are expensive. When `[llvm].coverage = true`, CTE
+always links the coverage tools against shared LLVM/Clang libraries to reduce
+peak memory. GCC coverage builds do not have an equivalent single dynamic-link
+knob in CTE; reduce `[general].jobs` if they exceed memory.
 
 Supported architectures (`cte list-arch`): `x86_64`, `aarch64`, `arm`,
 `riscv64`, `riscv32`, `mips64`, `mips`, `powerpc64`, `powerpc64le`, `s390x`,

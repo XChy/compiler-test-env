@@ -20,13 +20,13 @@ architectures = [
 
 [llvm]
 enabled = true
-ref = "main"
+version = "main"
 projects = ["clang", "lld"]
 runtimes = ["compiler-rt"]   # sanitizers on by default
 
 [gcc]
 enabled = true
-ref = "master"
+version = "master"
 
 [qemu]
 enabled = true

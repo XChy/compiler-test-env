@@ -7,13 +7,13 @@ architectures = ["x86_64", "riscv64", "aarch64"]
 
 [llvm]
 enabled = true
-ref = "main"
+version = "main"
 projects = ["clang", "lld"]
 runtimes = ["compiler-rt"]   # sanitizers on by default
 
 [gcc]
 enabled = true
-ref = "master"
+version = "master"
 
 # Cross compilers without both entries only support -c/-S.  Supply matching
 # glibc sysroots and target binutils to link executable files.

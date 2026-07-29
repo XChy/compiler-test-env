@@ -24,8 +24,11 @@ libc = "musl"
 enabled = true
 # Also build an independent instrumented tree under toolchains/llvm-coverage.
 coverage = false
-# Trunk. Use "main" for the very latest; a release branch also works.
-ref = "main"
+# Coverage LLVM always links tools against shared LLVM/Clang dylibs to reduce
+# peak memory.
+# Git branch, tag, or commit to build. Use "main" for the very latest.
+# `ref = "main"` is still accepted by older configs.
+version = "main"
 # SSH by default (needs a GitHub SSH key); HTTPS also works:
 # https://github.com/llvm/llvm-project.git
 repo = "git@github.com:llvm/llvm-project.git"
@@ -40,7 +43,9 @@ extra_cmake_args = []    # e.g. ["-DLLVM_USE_LINKER=lld"]
 enabled = true
 # Also build independent instrumented compilers under toolchains/gcc-coverage.
 coverage = false
-ref = "master"           # trunk
+# Git branch, tag, or commit to build. Use "master" for trunk.
+# `ref = "master"` is still accepted by older configs.
+version = "master"
 # GitHub mirror (faster/more reliable than gcc.gnu.org). HTTPS also works:
 # https://github.com/gcc-mirror/gcc.git
 repo = "git@github.com:gcc-mirror/gcc.git"

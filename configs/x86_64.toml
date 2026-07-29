@@ -7,13 +7,13 @@ architectures = ["x86_64"]
 
 [llvm]
 enabled = true
-ref = "main"
+version = "main"
 projects = ["clang", "lld"]
 runtimes = ["compiler-rt"]   # sanitizers on by default
 
 [gcc]
 enabled = true
-ref = "master"
+version = "master"
 
 [qemu]
 # Native binaries run directly; QEMU isn't needed for a single host target.

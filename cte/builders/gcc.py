@@ -150,10 +150,10 @@ class GCCBuilder(Builder):
 
     def _sync(self) -> None:
         c = self.cfg.gcc
-        marker = (c.repo, c.ref, c.shallow)
+        marker = (c.repo, c.source_ref, c.shallow)
         if getattr(self.cfg, "_gcc_sync_marker", None) == marker:
             return
-        self._git_sync(c.repo, c.ref, c.shallow)
+        self._git_sync(c.repo, c.source_ref, c.shallow)
         log.info("downloading GCC prerequisites (gmp/mpfr/mpc/isl)")
         log.run_to_log(
             ["./contrib/download_prerequisites"], self.build / "prerequisites.log", cwd=self.src
@@ -340,11 +340,11 @@ class GCCBuilder(Builder):
             self._build_all(coverage)
 
     def install(self) -> None:
-        log.info(f"installing GCC ({self.cfg.gcc.ref})")
+        log.info(f"installing GCC ({self.cfg.gcc.source_ref})")
         self._sync_and_build()
         log.info(f"GCC installed at {self.install_dir} ({self._describe_src()})")
 
     def update(self) -> None:
-        log.info("updating GCC to trunk")
+        log.info(f"updating GCC ({self.cfg.gcc.source_ref})")
         self._sync_and_build()
         log.info(f"GCC updated to {self._describe_src()}")

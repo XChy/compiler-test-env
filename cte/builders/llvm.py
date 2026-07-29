@@ -15,7 +15,7 @@ class LLVMBuilder(Builder):
 
     def _sync(self) -> None:
         c = self.cfg.llvm
-        self._git_sync(c.repo, c.ref, c.shallow)
+        self._git_sync(c.repo, c.source_ref, c.shallow)
 
     def _build_dir(self, coverage: bool):
         return self.cfg.build_dir / ("llvm-coverage" if coverage else "llvm")
@@ -73,7 +73,12 @@ class LLVMBuilder(Builder):
                     "LLVM coverage build works best with Clang; "
                     f"expected {clang} and {clangxx}"
                 )
-            cmake_args.append("-DLLVM_BUILD_INSTRUMENTED_COVERAGE=ON")
+            cmake_args += [
+                "-DLLVM_BUILD_INSTRUMENTED_COVERAGE=ON",
+                "-DLLVM_BUILD_LLVM_DYLIB=ON",
+                "-DLLVM_LINK_LLVM_DYLIB=ON",
+                "-DCLANG_LINK_CLANG_DYLIB=ON",
+            ]
         cmake_args += c.extra_cmake_args
 
         label = "LLVM coverage" if coverage else "LLVM"
@@ -110,11 +115,11 @@ class LLVMBuilder(Builder):
             self._configure_and_build(coverage)
 
     def install(self) -> None:
-        log.info(f"installing LLVM/Clang ({self.cfg.llvm.ref})")
+        log.info(f"installing LLVM/Clang ({self.cfg.llvm.source_ref})")
         self._sync_and_build()
         log.info(f"LLVM installed at {self.install_dir} ({self._describe_src()})")
 
     def update(self) -> None:
-        log.info("updating LLVM/Clang to trunk")
+        log.info(f"updating LLVM/Clang ({self.cfg.llvm.source_ref})")
         self._sync_and_build()
         log.info(f"LLVM updated to {self._describe_src()}")
