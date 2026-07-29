@@ -6,6 +6,9 @@ list only decides which backends are compiled into LLVM_TARGETS_TO_BUILD.
 
 from __future__ import annotations
 
+from pathlib import Path
+import shutil
+
 from .. import arch, log
 from .base import Builder
 
@@ -25,6 +28,52 @@ class LLVMBuilder(Builder):
 
     def _variants(self) -> list[bool]:
         return [False, *([True] if self.cfg.llvm.coverage else [])]
+
+    @staticmethod
+    def _has_profile_runtime(clangxx: Path) -> bool:
+        try:
+            resource_dir = Path(log.capture([str(clangxx), "--print-resource-dir"]))
+        except Exception:
+            return False
+        return bool(list((resource_dir / "lib").glob("**/libclang_rt.profile.a")))
+
+    def _coverage_compiler_args(self) -> list[str]:
+        """Return CMake compiler args for an instrumented coverage build.
+
+        LLVM's coverage build links build-time utilities such as
+        llvm-min-tblgen with -fprofile-instr-generate.  The Clang used for that
+        build must provide libclang_rt.profile.a; stale normal installs can have
+        a clang binary whose resource-dir version no longer matches the
+        installed compiler-rt tree.
+        """
+        normal_bin = self._install_dir(False) / "bin"
+        candidates: list[tuple[Path, Path]] = []
+        normal_clang = normal_bin / "clang"
+        normal_clangxx = normal_bin / "clang++"
+        if normal_clang.is_file() and normal_clangxx.is_file():
+            candidates.append((normal_clang, normal_clangxx))
+
+        path_clang = shutil.which("clang")
+        path_clangxx = shutil.which("clang++")
+        if path_clang and path_clangxx:
+            candidates.append((Path(path_clang), Path(path_clangxx)))
+
+        for clang, clangxx in candidates:
+            if self._has_profile_runtime(clangxx):
+                return [
+                    f"-DCMAKE_C_COMPILER={clang}",
+                    f"-DCMAKE_CXX_COMPILER={clangxx}",
+                ]
+            log.warn(
+                "skipping coverage bootstrap compiler without "
+                f"libclang_rt.profile.a: {clangxx}"
+            )
+
+        raise RuntimeError(
+            "LLVM coverage build requires a Clang with libclang_rt.profile.a. "
+            "Clean/reinstall the normal LLVM tree, or put a working host "
+            "clang/clang++ on PATH."
+        )
 
     def _configure_and_build(self, coverage: bool = False) -> None:
         log.require("cmake", "ninja")
@@ -60,19 +109,7 @@ class LLVMBuilder(Builder):
         if c.runtimes:
             cmake_args.append(f"-DLLVM_ENABLE_RUNTIMES={';'.join(c.runtimes)}")
         if coverage:
-            normal_bin = self._install_dir(False) / "bin"
-            clang = normal_bin / "clang"
-            clangxx = normal_bin / "clang++"
-            if clang.is_file() and clangxx.is_file():
-                cmake_args += [
-                    f"-DCMAKE_C_COMPILER={clang}",
-                    f"-DCMAKE_CXX_COMPILER={clangxx}",
-                ]
-            else:
-                log.warn(
-                    "LLVM coverage build works best with Clang; "
-                    f"expected {clang} and {clangxx}"
-                )
+            cmake_args += self._coverage_compiler_args()
             cmake_args += [
                 "-DLLVM_BUILD_INSTRUMENTED_COVERAGE=ON",
                 "-DLLVM_BUILD_LLVM_DYLIB=ON",
