@@ -29,3 +29,8 @@ version = "master"
 enabled = true
 version = "latest"
 modes = ["user"]
+
+[qemu_ruyisdk]
+enabled = true
+ref = "p-dev"
+modes = ["user"]

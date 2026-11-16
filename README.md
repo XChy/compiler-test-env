@@ -4,9 +4,9 @@ A quick helper for setting up testing environments for the **latest** C
 compilers across **multiple architectures**.
 
 It builds bleeding-edge toolchains from source — LLVM/Clang `main` and GCC
-`trunk` — and a recent stable **QEMU**, so you can compile for many targets and
-run the results without juggling distro packages. Everything is installed into a
-local prefix and is **never added to your `PATH` automatically**.
+`trunk` — plus stable upstream and RuyiSDK **QEMU**, so you can compile for many
+targets and run the results without juggling distro packages. Everything is
+installed into a local prefix and is **never added to your `PATH` automatically**.
 
 ## Why
 
@@ -21,8 +21,8 @@ the toolchains isolated so they can't shadow your system compilers.
   the newest trunk and rebuilds.
 - **Multi-arch** — pick architectures in config; a single Clang build covers all
   of them, GCC builds one cross compiler per target.
-- **Stable QEMU** — auto-resolves the latest stable QEMU release (or pin one)
-  and builds the `linux-user` / `system` targets for your architectures.
+- **Coexisting QEMUs** — builds stable upstream QEMU and, independently, the
+  RuyiSDK P-extension branch with its required patch.
 - **Sanitizers by default** — LLVM builds `compiler-rt`, and GCC builds
   `libsanitizer` for the native target (and for cross targets with a sysroot),
   so asan/ubsan/tsan and friends are available out of the box.
@@ -96,7 +96,7 @@ python3 -m cte --help
 ## Quick start
 
 It runs with zero setup — by default it uses `configs/common.toml`
-(LLVM/GCC `main`/`master` + latest stable QEMU, targeting `x86_64`,
+(LLVM/GCC `main`/`master` + upstream and RuyiSDK QEMU, targeting `x86_64`,
 `riscv64`, and `aarch64`):
 
 ```bash
@@ -126,8 +126,8 @@ Clang + GCC trunk with sanitizers via `compiler-rt`):
 | --- | --- | --- |
 | [`configs/x86_64.toml`](configs/x86_64.toml) | `x86_64` | off (runs natively) |
 | [`configs/x86_64-coverage.toml`](configs/x86_64-coverage.toml) | `x86_64` plus separate coverage LLVM/GCC | off (runs natively) |
-| [`configs/common.toml`](configs/common.toml) | `x86_64`, `riscv64`, `aarch64` | linux-user |
-| [`configs/all.toml`](configs/all.toml) | every supported architecture | linux-user |
+| [`configs/common.toml`](configs/common.toml) | `x86_64`, `riscv64`, `aarch64` | upstream + RuyiSDK linux-user |
+| [`configs/all.toml`](configs/all.toml) | every supported architecture | upstream + RuyiSDK linux-user |
 
 ```bash
 cte install
@@ -149,12 +149,15 @@ Or skip `PATH` entirely and call tools by their exported variables:
 $CLANG_RISCV64_TRUNK -c foo.c
 "$GCC_RISCV64_TRUNK" -S foo.c      # if GCC is enabled
 "$QEMU_RISCV64" ./a.out
+"$QEMU_RISCV64_P" ./packed-simd.out # RuyiSDK QEMU, P enabled
 ```
 
 The per-target `CLANG_<arch>_TRUNK` variables expand to the clang path plus the
 target triple, sysroot, GCC toolchain, and `-fuse-ld=lld` flags when those paths
 are configured. Use them unquoted as shown above; they point at shell wrapper
-functions so the same command works in bash and zsh.
+functions so the same command works in bash and zsh. When RuyiSDK QEMU is
+enabled, `QEMU_RISCV64_P` is a wrapper that automatically adds the P-extension
+CPU option; upstream `QEMU_RISCV64` remains available unchanged.
 
 When `coverage = true` is set under `[llvm]` or `[gcc]`, CTE keeps the normal
 compiler and adds independent instrumented installs under
@@ -166,13 +169,13 @@ exports `CLANG_COVERAGE_TRUNK`, `GCC_<arch>_COVERAGE_TRUNK`, and
 
 | Command | Description |
 | --- | --- |
-| `cte install [sysroot\|llvm\|gcc\|qemu\|all]` | Clone/fetch sources, configure, build, install into the prefix. |
-| `cte update  [sysroot\|llvm\|gcc\|qemu\|all]` | Re-sync to latest trunk / newest stable QEMU and rebuild. |
+| `cte install [sysroot\|llvm\|gcc\|qemu\|qemu-ruyisdk\|all]` | Clone/fetch sources, configure, build, install into the prefix. |
+| `cte update  [sysroot\|llvm\|gcc\|qemu\|qemu-ruyisdk\|all]` | Re-sync the configured sources and rebuild. |
 | `cte status` | Show enabled components and install state. |
 | `cte set CONFIG` | Persist CONFIG as the default for future commands. |
 | `cte config` | Show the config path selected by default. |
 | `cte env [--write]` | Print the activation script (or write `cte-work/toolchains/activate.sh`). |
-| `cte clean  [sysroot\|llvm\|gcc\|qemu\|all]` | Remove build and install trees. |
+| `cte clean  [sysroot\|llvm\|gcc\|qemu\|qemu-ruyisdk\|all]` | Remove build and install trees. |
 | `cte list-arch` | List supported architectures and their target identifiers. |
 | `cte verify` | Link and, when QEMU is available, run every configured target. |
 
@@ -219,7 +222,20 @@ version = "master"                           # branch, tag, or commit
 enabled = true
 version = "latest"                           # newest stable, or e.g. "9.1.0"
 modes = ["user"]                             # "user" and/or "system"
+
+[qemu_ruyisdk]
+enabled = true
+repo = "https://github.com/ruyisdk/qemu.git"
+ref = "p-dev"                                # RISC-V P extension branch
+modes = ["user"]
 ```
+
+The two QEMU builds use independent source/build/install trees:
+`qemu` installs upstream under `toolchains/qemu`, while `qemu-ruyisdk` installs
+the configured `repo`/`ref` under `toolchains/qemu-ruyisdk`. CTE applies the
+bundled RV64 `predsum.bs`/`predsum.hs` fix to the RuyiSDK checkout. Activation
+exports upstream `QEMU_RISCV64` and P-enabled `QEMU_RISCV64_P`; the latter adds
+`-cpu max,x-p=true` because the branch does not enable P by default.
 
 `[llvm].version` and `[gcc].version` accept any Git ref that can be fetched from
 the configured repository: trunk branches such as `main`/`master`, release
@@ -250,7 +266,7 @@ cte/
     base.py         # shared clone/build/install lifecycle
     llvm.py         # LLVM/Clang trunk (one build, many targets)
     gcc.py          # GCC trunk cross compilers (one per target)
-    qemu.py         # latest-stable QEMU (auto version resolution)
+    qemu.py         # stable upstream and RuyiSDK P-extension QEMU
 ```
 
 Sources are cloned into `cte-work/src/`, built in `cte-work/build/`, and

@@ -19,3 +19,6 @@ cte = "cte.cli:main"
 
 [tool.setuptools]
 packages = ["cte", "cte.builders"]
+
+[tool.setuptools.package-data]
+cte = ["patches/*.patch"]

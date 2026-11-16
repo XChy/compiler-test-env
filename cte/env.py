@@ -31,10 +31,6 @@ def _gcc_coverage_root(cfg: Config) -> Path:
     return cfg.prefix / "gcc-coverage"
 
 
-def _qemu_bin(cfg: Config) -> Path:
-    return cfg.prefix / "qemu" / "bin"
-
-
 def _clang_args(triple: str, sysroot: Path | None, gcc_root: Path | None) -> list[str]:
     args = [f"--target={triple}"]
     if sysroot:
@@ -95,8 +91,10 @@ def render(cfg: Config) -> str:
         if sysroot:
             lines.append(f'export SYSROOT_{var}="{sysroot}"')
         if cfg.qemu.enabled:
-            runner = _qemu_bin(cfg) / f"qemu-{a.qemu_user}"
-            lines.append(f'export QEMU_{var}="{runner}"')
+            runner = cfg.qemu_runner(a)
+            lines.append(f'export QEMU_{var}="{runner[0]}"')
+        if cfg.qemu_ruyisdk.enabled and a.name.startswith("riscv"):
+            lines.append(f'export QEMU_{var}_P="{cfg.qemu_p_runner(a)[0]}"')
 
     lines.append("")
     return "\n".join(lines)

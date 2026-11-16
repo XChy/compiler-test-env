@@ -6,7 +6,7 @@ from ..config import Config
 from .base import Builder
 from .gcc import GCCBuilder
 from .llvm import LLVMBuilder
-from .qemu import QEMUBuilder
+from .qemu import QEMUBuilder, RuyiQEMUBuilder
 from .sysroot import SysrootBuilder
 
 _REGISTRY = {
@@ -14,6 +14,7 @@ _REGISTRY = {
     "llvm": LLVMBuilder,
     "gcc": GCCBuilder,
     "qemu": QEMUBuilder,
+    "qemu-ruyisdk": RuyiQEMUBuilder,
 }
 
 

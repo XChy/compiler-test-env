@@ -56,7 +56,7 @@ def cmd_status(cfg: Config, args) -> None:
         enabled = name in cfg.enabled_components()
         mark = "x" if enabled else " "
         state = builders.get(name, cfg).status() if enabled else "disabled"
-        print(f"  [{mark}] {name:5} {state}")
+        print(f"  [{mark}] {name:13} {state}")
 
 
 def cmd_env(cfg: Config, args) -> None:
@@ -135,15 +135,24 @@ def cmd_verify(cfg: Config, args) -> None:
                     [*command, "-x", "c", "-", "-o", str(output)],
                     input=source, text=True, check=True,
                 )
-                runner = cfg.prefix / "qemu" / "bin" / f"qemu-{target.qemu_user}"
                 if target.name == cfg.host_architecture:
                     subprocess.run([str(output)], check=True)
                     result = "linked and ran natively"
-                elif runner.is_file():
-                    subprocess.run([str(runner), str(output)], check=True)
-                    result = "linked and ran with QEMU"
                 else:
-                    result = "linked (QEMU not installed; not run)"
+                    runners: list[tuple[str, list[str]]] = []
+                    if cfg.qemu.enabled:
+                        runners.append(("upstream QEMU", cfg.qemu_runner(target)))
+                    if cfg.qemu_ruyisdk.enabled and target.name.startswith("riscv"):
+                        runners.append(("RuyiSDK QEMU", cfg.qemu_p_runner(target)))
+                    ran_with = []
+                    for runner_name, runner in runners:
+                        if Path(runner[0]).is_file():
+                            subprocess.run([*runner, str(output)], check=True)
+                            ran_with.append(runner_name)
+                    if ran_with:
+                        result = "linked and ran with " + " and ".join(ran_with)
+                    else:
+                        result = "linked (QEMU not installed; not run)"
                 print(f"OK   {target.name} ({name}): {result}")
                 checked += 1
     if not checked:
@@ -175,7 +184,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = p.add_subparsers(dest="command", required=True)
 
-    comp_help = "components to act on (sysroot/llvm/gcc/qemu/all); default: enabled ones"
+    comp_help = (
+        "components to act on "
+        "(sysroot/llvm/gcc/qemu/qemu-ruyisdk/all); default: enabled ones"
+    )
 
     s = sub.add_parser("install", help="build and install components from source")
     s.add_argument("components", nargs="*", help=comp_help)

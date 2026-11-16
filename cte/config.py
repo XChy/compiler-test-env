@@ -102,6 +102,16 @@ class QEMUConfig:
 
 
 @dataclass
+class RuyiQEMUConfig:
+    enabled: bool = False
+    repo: str = "https://github.com/ruyisdk/qemu.git"
+    ref: str = "p-dev"
+    shallow: bool = True
+    modes: list[str] = field(default_factory=lambda: ["user"])
+    extra_configure_args: list[str] = field(default_factory=list)
+
+
+@dataclass
 class Config:
     root: Path
     work_dir: Path
@@ -114,6 +124,7 @@ class Config:
     gcc: GCCConfig
     sysroot: SysrootConfig
     qemu: QEMUConfig
+    qemu_ruyisdk: RuyiQEMUConfig
 
     @property
     def arches(self) -> list[arch.Arch]:
@@ -129,6 +140,8 @@ class Config:
             out.append("gcc")
         if self.qemu.enabled:
             out.append("qemu")
+        if self.qemu_ruyisdk.enabled:
+            out.append("qemu-ruyisdk")
         return out
 
     @property
@@ -155,6 +168,21 @@ class Config:
         """Return the directory containing the target assembler and linker."""
         value = self.gcc.binutils.get(target.name)
         return _resolve_dir(self.root, value) if value else None
+
+    def qemu_runner(self, target: arch.Arch) -> list[str]:
+        """Return the configured linux-user QEMU command for ``target``."""
+        return [str(self.prefix / "qemu" / "bin" / f"qemu-{target.qemu_user}")]
+
+    def qemu_p_runner(self, target: arch.Arch) -> list[str]:
+        """Return RuyiSDK QEMU with its P extension enabled."""
+        return [
+            str(
+                self.prefix
+                / "qemu-ruyisdk"
+                / "bin"
+                / f"qemu-{target.qemu_user}-p"
+            )
+        ]
 
 
 def project_root(start: Path | None = None) -> Path:
@@ -206,6 +234,7 @@ def from_data(data: dict, root: Path) -> Config:
         gcc=GCCConfig(**data.get("gcc", {})),
         sysroot=SysrootConfig(**data.get("sysroot", {})),
         qemu=QEMUConfig(**data.get("qemu", {})),
+        qemu_ruyisdk=RuyiQEMUConfig(**data.get("qemu_ruyisdk", {})),
     )
     # Validate architectures eagerly for a friendly error.
     known = {a.name for a in arch.resolve(cfg.architectures)}

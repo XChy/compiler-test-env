@@ -74,3 +74,13 @@ version = "latest"
 # "system" = qemu-system-<arch> (full machine emulation).
 modes = ["user"]
 extra_configure_args = []
+
+[qemu_ruyisdk]
+# Independent RuyiSDK QEMU install with RISC-V P extension support. It can
+# coexist with [qemu] and exports QEMU_RISCV64_P when enabled.
+enabled = false
+repo = "https://github.com/ruyisdk/qemu.git"
+ref = "p-dev"
+shallow = true
+modes = ["user"]
+extra_configure_args = []
